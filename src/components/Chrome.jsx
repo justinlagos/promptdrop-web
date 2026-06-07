@@ -46,7 +46,7 @@ export function Footer() {
           <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 10 }}>A teleprompter that lives beside your camera.</p>
         </div>
         <div className="foot__col"><h4>Product</h4><a href="/#how">How it works</a><a href="/#meetings">Meeting overlay</a><Link to="/pricing">Pricing</Link><Link to="/download">Mac app</Link></div>
-        <div className="foot__col"><h4>Company</h4><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Contact</a></div>
+        <div className="foot__col"><h4>Legal</h4><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/acceptable-use">Acceptable use</Link></div>
       </div>
       <div className="foot__legal">© 2026 PromptDrop · Keep your eyes on the lens.</div>
     </div></footer>

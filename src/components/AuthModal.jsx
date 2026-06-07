@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { authService } from "../services/index.js";
 
@@ -12,12 +13,14 @@ export default function AuthModal() {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [agree, setAgree] = useState(false);
 
   if (!authOpen) return null;
   const connected = authService.configured();
 
   async function submit(e) {
     e.preventDefault();
+    if (mode === "signup" && !agree) { setMsg({ type: "err", text: "Please agree to the Terms and Privacy Policy to continue." }); return; }
     setBusy(true); setMsg(null);
     const r = mode === "signin" ? await signIn(email, pw) : await signUp(email, pw, name);
     setBusy(false);
@@ -46,6 +49,12 @@ export default function AuthModal() {
             )}
             <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" /></label>
             <label>Password<input type="password" required minLength={6} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="At least 6 characters" autoComplete={mode === "signin" ? "current-password" : "new-password"} /></label>
+            {mode === "signup" && (
+              <label style={{ flexDirection: "row", alignItems: "flex-start", gap: 9, fontSize: 12.5, color: "var(--text-secondary)", fontWeight: 400, lineHeight: 1.45 }}>
+                <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, flex: "none" }} />
+                <span>I agree to the <Link className="link" to="/terms" target="_blank">Terms</Link> and <Link className="link" to="/privacy" target="_blank">Privacy Policy</Link>, and I understand I'm responsible for getting consent before recording anyone.</span>
+              </label>
+            )}
             {msg && <div className={msg.type === "err" ? "note note--err" : "note note--ok"}>{msg.text}</div>}
             <button className="btn btn--primary btn--lg" type="submit" disabled={busy} style={{ width: "100%" }}>
               {busy ? "Working…" : mode === "signin" ? "Sign in" : "Create account"}

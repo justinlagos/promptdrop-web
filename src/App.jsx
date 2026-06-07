@@ -11,6 +11,7 @@ import Studio from "./pages/Studio.jsx";
 import Scripts from "./pages/Scripts.jsx";
 import Welcome from "./pages/Welcome.jsx";
 import StudioEmbed from "./pages/StudioEmbed.jsx";
+import Legal from "./pages/Legal.jsx";
 import { useIsMobile } from "./mobile/useIsMobile.js";
 import MobileShell from "./mobile/MobileShell.jsx";
 
@@ -38,6 +39,9 @@ function Shell() {
         <Route path="/account" element={<Account />} />
         <Route path="/scripts" element={<Scripts />} />
         <Route path="/meeting" element={<Studio />} />
+        <Route path="/privacy" element={<Legal doc="privacy" />} />
+        <Route path="/terms" element={<Legal doc="terms" />} />
+        <Route path="/acceptable-use" element={<Legal doc="acceptable-use" />} />
         <Route path="*" element={<Landing />} />
       </Routes>
       <Footer />

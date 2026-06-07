@@ -19,6 +19,17 @@ export default function Studio() {
   const [elapsed, setElapsed] = useState(0);
   const [recs, setRecs] = useState([]);
   const [err, setErr] = useState("");
+  const [gate, setGate] = useState(false);   // recording-consent acknowledgement
+
+  function requestStart() {
+    let ok = false;
+    try { ok = localStorage.getItem("pd.recConsent") === "1"; } catch {}
+    if (ok) start(); else setGate(true);
+  }
+  function acceptConsent() {
+    try { localStorage.setItem("pd.recConsent", "1"); } catch {}
+    setGate(false); start();
+  }
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -118,10 +129,28 @@ export default function Studio() {
             ))}
           </div>
           {state === "idle"
-            ? <button className="btn btn--primary" disabled={!supported} onClick={start}>Start recording</button>
+            ? <button className="btn btn--primary" disabled={!supported} onClick={requestStart}>Start recording</button>
             : <button className="btn" style={{ background: "var(--recording, #FF3B30)", color: "#fff" }} onClick={stop}>Stop</button>}
         </div>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 12, lineHeight: 1.5 }}>
+          You're responsible for getting consent from everyone before recording. Recording laws vary, and many places require all participants to agree.
+        </p>
       </div>
+
+      {gate && (
+        <div className="modal" onMouseDown={() => setGate(false)}>
+          <div className="modal__card" onMouseDown={(e) => e.stopPropagation()}>
+            <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Before you record</h2>
+            <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6, marginBottom: 14 }}>
+              You are responsible for following the law wherever you and the other people are. In many places (for example several US states and much of the EU) you must get every participant's consent before recording a call or conversation. By continuing you confirm you have the consent and legal right to record, and you agree to our <a className="link" href="/terms" target="_blank" rel="noreferrer">Terms</a> and <a className="link" href="/acceptable-use" target="_blank" rel="noreferrer">Acceptable Use Policy</a>.
+            </p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button className="btn btn--primary" onClick={acceptConsent}>I have consent, start recording</button>
+              <button className="btn btn--ghost" onClick={() => setGate(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Your recordings</h2>
       {recs.length === 0 ? (
