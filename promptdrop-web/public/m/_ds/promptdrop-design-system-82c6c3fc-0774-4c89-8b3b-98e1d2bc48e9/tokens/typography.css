@@ -1,0 +1,127 @@
+/* ============================================================
+   PromptDrop, Typography System
+   Manrope for UI + reading surface · JetBrains Mono for metadata.
+   Scale is purpose-built: a control app (compact, dense) and a
+   teleprompter (large, high-contrast, readable from a distance).
+   ============================================================ */
+
+:root {
+  /* ---- Families ---- */
+  --font-sans: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: var(--font-sans);
+
+  /* ---- Weights ---- */
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semibold: 600;
+  --weight-bold:    700;
+  --weight-extrabold: 800;
+
+  /* ---- Raw type scale (px) ---- */
+  --fs-11: 0.6875rem;  /* 11 */
+  --fs-12: 0.75rem;    /* 12 */
+  --fs-13: 0.8125rem;  /* 13 */
+  --fs-14: 0.875rem;   /* 14 */
+  --fs-15: 0.9375rem;  /* 15 */
+  --fs-16: 1rem;       /* 16 */
+  --fs-18: 1.125rem;   /* 18 */
+  --fs-20: 1.25rem;    /* 20 */
+  --fs-24: 1.5rem;     /* 24 */
+  --fs-30: 1.875rem;   /* 30 */
+  --fs-38: 2.375rem;   /* 38 */
+  --fs-48: 3rem;       /* 48 */
+  --fs-60: 3.75rem;    /* 60 */
+  --fs-72: 4.5rem;     /* 72 */
+
+  /* ---- Line heights ---- */
+  --lh-tight:   1.05;   /* @kind other */
+  --lh-snug:    1.2;    /* @kind other */
+  --lh-normal:  1.45;   /* @kind other */
+  --lh-relaxed: 1.6;    /* @kind other */
+
+  /* ---- Letter spacing ---- */
+  --tracking-tighter: -0.03em;
+  --tracking-tight:   -0.018em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.02em;
+  --tracking-caps:    0.08em;   /* mono labels, eyebrows */
+
+  /* ============================================================
+     Semantic text roles, control app
+     Each role: size / line-height / weight / tracking
+     ============================================================ */
+
+  /* Display hero (landing) */
+  --text-display-size: var(--fs-72);
+  --text-display-lh: var(--lh-tight);
+  --text-display-weight: var(--weight-extrabold);
+  --text-display-tracking: var(--tracking-tighter);
+
+  /* Page title */
+  --text-title-size: var(--fs-30);
+  --text-title-lh: var(--lh-snug);
+  --text-title-weight: var(--weight-bold);
+  --text-title-tracking: var(--tracking-tight);
+
+  /* Section title */
+  --text-section-size: var(--fs-20);
+  --text-section-lh: var(--lh-snug);
+  --text-section-weight: var(--weight-semibold);
+  --text-section-tracking: var(--tracking-tight);
+
+  /* Card title */
+  --text-card-size: var(--fs-16);
+  --text-card-lh: var(--lh-snug);
+  --text-card-weight: var(--weight-semibold);
+  --text-card-tracking: var(--tracking-normal);
+
+  /* Body */
+  --text-body-size: var(--fs-15);
+  --text-body-lh: var(--lh-normal);
+  --text-body-weight: var(--weight-regular);
+
+  /* Small body */
+  --text-small-size: var(--fs-13);
+  --text-small-lh: var(--lh-normal);
+
+  /* Caption */
+  --text-caption-size: var(--fs-12);
+  --text-caption-lh: var(--lh-normal);
+
+  /* Button */
+  --text-button-size: var(--fs-14);
+  --text-button-weight: var(--weight-semibold);
+  --text-button-tracking: -0.005em;
+
+  /* Label (form) */
+  --text-label-size: var(--fs-13);
+  --text-label-weight: var(--weight-medium);
+
+  /* Input */
+  --text-input-size: var(--fs-14);
+
+  /* Metadata / eyebrow (mono) */
+  --text-meta-size: var(--fs-12);
+  --text-meta-weight: var(--weight-medium);
+  --text-meta-tracking: var(--tracking-caps);
+
+  /* ============================================================
+     Teleprompter roles, the reading surface
+     Sizes are fluid; the app scales current-line size at runtime.
+     ============================================================ */
+  --tp-current-size: clamp(2rem, 4.4vw, 3.25rem);
+  --tp-current-lh: 1.35;   /* @kind other */
+  --tp-current-weight: var(--weight-semibold);
+  --tp-current-tracking: -0.01em;
+
+  --tp-adjacent-size: clamp(1.5rem, 3.2vw, 2.4rem);
+  --tp-adjacent-weight: var(--weight-medium);
+
+  --countdown-size: clamp(4rem, 14vw, 9rem);
+  --countdown-weight: var(--weight-bold);
+  --countdown-tracking: var(--tracking-tight);
+
+  --status-size: var(--fs-14);
+  --status-weight: var(--weight-medium);
+}

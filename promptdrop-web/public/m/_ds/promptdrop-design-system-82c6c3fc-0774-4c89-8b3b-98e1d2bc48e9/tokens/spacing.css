@@ -1,0 +1,65 @@
+/* ============================================================
+   PromptDrop, Spacing & Layout
+   8px base with a 4px half-step for fine control. The app should
+   feel spacious; the Prompt Drop needs generous safe areas so
+   text and the character never crowd the edges.
+   ============================================================ */
+
+:root {
+  /* ---- Core scale ---- */
+  --space-0:  0;
+  --space-1:  2px;
+  --space-2:  4px;
+  --space-3:  8px;
+  --space-4:  12px;
+  --space-5:  16px;
+  --space-6:  20px;
+  --space-7:  24px;
+  --space-8:  32px;
+  --space-9:  40px;
+  --space-10: 48px;
+  --space-11: 56px;
+  --space-12: 64px;
+  --space-14: 80px;
+  --space-16: 96px;
+  --space-20: 128px;
+
+  /* ---- Semantic spacing ---- */
+  --page-padding-x: var(--space-10);    /* desktop gutter */
+  --page-padding-y: var(--space-8);
+  --card-padding:   var(--space-7);      /* 24 */
+  --card-padding-sm: var(--space-5);     /* 16 */
+  --panel-padding:  var(--space-7);
+  --panel-gap:      var(--space-5);
+  --control-gap:    var(--space-4);      /* between settings rows */
+  --form-gap:       var(--space-5);      /* between fields */
+  --toolbar-gap:    var(--space-3);
+  --inline-gap:     var(--space-3);
+  --stack-gap:      var(--space-5);
+
+  /* ---- Prompt Drop interior ---- */
+  --promptdrop-pad-x: var(--space-12);   /* horizontal text inset */
+  --promptdrop-pad-y: var(--space-9);
+  --promptdrop-text-safe: var(--space-14); /* current line breathing room */
+  --character-safe: var(--space-8);      /* clearance around character */
+
+  /* ---- Fullscreen / focus mode ---- */
+  --fullscreen-pad: var(--space-16);
+
+  /* ---- Layout dimensions ---- */
+  --nav-width: 248px;            /* global left nav */
+  --nav-width-collapsed: 68px;
+  --library-panel-width: 300px;  /* Script Studio left */
+  --settings-panel-width: 360px; /* Script Studio right */
+  --topbar-height: 60px;
+  --playback-height: 84px;
+  --content-max: 1280px;
+  --reading-max: 720px;          /* comfortable script editor measure */
+
+  /* ---- Breakpoints (reference values) ---- */
+  --bp-mobile: 480px;
+  --bp-tablet: 768px;
+  --bp-laptop: 1024px;
+  --bp-desktop: 1280px;
+  --bp-wide: 1680px;
+}

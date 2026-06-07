@@ -1,0 +1,64 @@
+/* ============================================================
+   PromptDrop, Motion & Z-Index
+   Calm, physical, purposeful. The signature gesture is the
+   Prompt Drop expanding from the camera zone, a soft spring,
+   never bouncy. Reduced-motion replaces movement with fades.
+   ============================================================ */
+
+:root {
+  /* ---- Durations ---- */
+  --dur-instant: 80ms;    /* @kind other */
+  --dur-fast:    140ms;   /* @kind other */
+  --dur-standard: 220ms;  /* @kind other */
+  --dur-slow:    340ms;   /* @kind other */
+  --dur-expand:  480ms;   /* @kind other */
+  --dur-gesture: 600ms;   /* @kind other */
+
+  /* ---- Easing ---- */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);    /* @kind other */
+  --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);   /* @kind other */
+  --ease-in:       cubic-bezier(0.4, 0, 1, 1);      /* @kind other */
+  --ease-spring:   cubic-bezier(0.34, 1.32, 0.5, 1); /* @kind other */
+  --ease-drop:     cubic-bezier(0.22, 1, 0.36, 1);   /* @kind other */
+
+  /* ---- Composed transitions ---- */
+  --transition-fast:     all var(--dur-fast) var(--ease-standard);       /* @kind other */
+  --transition-standard: all var(--dur-standard) var(--ease-standard);   /* @kind other */
+  --transition-slow:     all var(--dur-slow) var(--ease-out);            /* @kind other */
+  --transition-color:    color var(--dur-fast) var(--ease-standard),
+                         background-color var(--dur-fast) var(--ease-standard),
+                         border-color var(--dur-fast) var(--ease-standard);  /* @kind other */
+
+  /* ---- Signature motions ---- */
+  --motion-promptdrop-expand: transform var(--dur-expand) var(--ease-drop),
+                              opacity var(--dur-standard) var(--ease-out);  /* @kind other */
+  --motion-gesture: transform var(--dur-gesture) var(--ease-spring);     /* @kind other */
+
+  /* Recording pulse period */
+  --pulse-period: 1.8s;    /* @kind other */
+
+  /* ---- Z-index scale ---- */
+  --z-base:        0;      /* @kind other */
+  --z-raised:      10;     /* @kind other */
+  --z-sticky:      100;    /* @kind other */
+  --z-nav:         200;    /* @kind other */
+  --z-panel:       300;    /* @kind other */
+  --z-dropdown:    400;    /* @kind other */
+  --z-overlay:     900;    /* @kind other */
+  --z-modal:       1000;   /* @kind other */
+  --z-toast:       1100;   /* @kind other */
+  --z-promptdrop:  2000;   /* @kind other */
+  --z-tooltip:     2100;   /* @kind other */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 1ms;      /* @kind other */
+    --dur-standard: 1ms;  /* @kind other */
+    --dur-slow: 1ms;      /* @kind other */
+    --dur-expand: 1ms;    /* @kind other */
+    --dur-gesture: 1ms;   /* @kind other */
+    --ease-spring: var(--ease-standard);  /* @kind other */
+    --ease-drop: var(--ease-standard);    /* @kind other */
+  }
+}
