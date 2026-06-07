@@ -12,20 +12,13 @@ import Scripts from "./pages/Scripts.jsx";
 import Welcome from "./pages/Welcome.jsx";
 import StudioEmbed from "./pages/StudioEmbed.jsx";
 import Legal from "./pages/Legal.jsx";
-import { useIsMobile } from "./mobile/useIsMobile.js";
-import MobileShell from "./mobile/MobileShell.jsx";
-
-// /app : native mobile app on phones, the full desktop studio on large screens.
-function AppArea() {
-  const mobile = useIsMobile();
-  return mobile ? <MobileShell /> : <StudioEmbed />;
-}
 
 function Shell() {
   const { pathname } = useLocation();
   const bare = pathname.startsWith("/app");   // app runs full-screen, no marketing chrome
 
-  if (bare) return <AppArea />;
+  // Same studio on every device (mobile gets a touch-optimised layout via studio mobile.css).
+  if (bare) return <StudioEmbed />;
 
   return (
     <>
