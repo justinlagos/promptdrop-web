@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+<title>PromptDrop</title>
+
+<link rel="stylesheet" href="_ds/promptdrop-design-system-82c6c3fc-0774-4c89-8b3b-98e1d2bc48e9/tokens/fonts.css" />
+<link rel="stylesheet" href="_ds/promptdrop-design-system-82c6c3fc-0774-4c89-8b3b-98e1d2bc48e9/tokens/colors.css" />
+<link rel="stylesheet" href="_ds/promptdrop-design-system-82c6c3fc-0774-4c89-8b3b-98e1d2bc48e9/tokens/typography.css" />
+<link rel="stylesheet" href="_ds/promptdrop-design-system-82c6c3fc-0774-4c89-8b3b-98e1d2bc48e9/tokens/spacing.css" />
+<link rel="stylesheet" href="_ds/promptdrop-design-system-82c6c3fc-0774-4c89-8b3b-98e1d2bc48e9/tokens/radius-shadow.css" />
+<link rel="stylesheet" href="_ds/promptdrop-design-system-82c6c3fc-0774-4c89-8b3b-98e1d2bc48e9/tokens/motion.css" />
+<link rel="stylesheet" href="_ds/promptdrop-design-system-82c6c3fc-0774-4c89-8b3b-98e1d2bc48e9/tokens/base.css" />
+<link rel="stylesheet" href="_ds/promptdrop-design-system-82c6c3fc-0774-4c89-8b3b-98e1d2bc48e9/styles.css" />
+
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--bg-primary, #0a0a0b);
+    font-family: var(--font-sans);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  #app-root { position: fixed; inset: 0; overflow: hidden; }
+
+  .pd-tap { transition: transform .12s ease, opacity .12s ease, filter .12s ease; -webkit-tap-highlight-color: transparent; }
+  .pd-tap:active { transform: scale(0.97); opacity: 0.88; }
+  .pd-rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--recording); box-shadow: 0 0 8px var(--rec-glow); animation: pd-pulse 1.8s infinite; display: inline-block; }
+  @keyframes pd-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .pd-wave-bar { width: 4px; height: 14px; border-radius: 9px; background: var(--accent-primary); animation: pd-wave 1.1s ease-in-out infinite; }
+  @keyframes pd-wave { 0%,100% { height: 10px; opacity: 0.5; } 50% { height: 46px; opacity: 1; } }
+  .pd-scroll::-webkit-scrollbar, .pd-hscroll::-webkit-scrollbar { display: none; }
+  .pd-scroll, .pd-hscroll { scrollbar-width: none; -ms-overflow-style: none; }
+  .pd-push { animation: pd-slide-in .3s cubic-bezier(.22,1,.36,1); }
+  @keyframes pd-slide-in { from { transform: translateY(16px); } to { transform: translateY(0); } }
+  ::placeholder { color: var(--text-muted); opacity: 1; }
+  button { font-family: var(--font-sans); }
+  @media (prefers-reduced-motion: reduce) { .pd-push, .pd-rec-dot, .pd-wave-bar { animation: none !important; } }
+</style>
+</head>
+<body>
+  <div id="app-root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
+
+  <script src="_ds/promptdrop-design-system-82c6c3fc-0774-4c89-8b3b-98e1d2bc48e9/_ds_bundle.js"></script>
+
+  <script type="text/babel" src="frames/ios-frame.jsx"></script>
+  <script type="text/babel" src="app/data.jsx"></script>
+  <script type="text/babel" src="app/screens-library.jsx"></script>
+  <script type="text/babel" src="app/screens-record.jsx"></script>
+  <script type="text/babel" src="app/screens-meetings.jsx"></script>
+  <script type="text/babel" src="app/screens-account.jsx"></script>
+  <script type="text/babel" src="app/app.jsx"></script>
+</body>
+</html>

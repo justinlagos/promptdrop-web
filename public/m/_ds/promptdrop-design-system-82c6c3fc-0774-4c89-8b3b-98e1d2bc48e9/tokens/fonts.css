@@ -1,0 +1,9 @@
+/* ============================================================
+   PromptDrop, Web Fonts
+   - Manrope        : UI + teleprompter grotesque (display → body)
+   - JetBrains Mono : logo wordmark, metadata, shortcuts, code
+   Loaded from the Google Fonts CDN. For production, self-host the
+   woff2 binaries and repoint the src URLs below.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap');

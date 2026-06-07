@@ -1,0 +1,97 @@
+/* ============================================================
+   PromptDrop, Base layer
+   Light reset, sensible element defaults, scrollbar styling,
+   and a small set of typography/utility helpers built on tokens.
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-lh);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv01";
+}
+
+h1, h2, h3, h4, h5, h6, p, figure { margin: 0; }
+
+a { color: inherit; text-decoration: none; }
+
+button, input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+::selection { background: var(--blue-tint); color: var(--text-primary); }
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--glow-focus);
+  border-radius: var(--radius-sm);
+}
+
+/* ---- Custom scrollbar (dark) ---- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-600) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--ink-600);
+  border-radius: var(--radius-pill);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--ink-500); background-clip: content-box; }
+
+/* ============================================================
+   Typography helpers
+   ============================================================ */
+.pd-display {
+  font-size: var(--text-display-size);
+  line-height: var(--text-display-lh);
+  font-weight: var(--text-display-weight);
+  letter-spacing: var(--text-display-tracking);
+}
+.pd-title {
+  font-size: var(--text-title-size);
+  line-height: var(--text-title-lh);
+  font-weight: var(--text-title-weight);
+  letter-spacing: var(--text-title-tracking);
+}
+.pd-section {
+  font-size: var(--text-section-size);
+  line-height: var(--text-section-lh);
+  font-weight: var(--text-section-weight);
+  letter-spacing: var(--text-section-tracking);
+}
+.pd-card-title {
+  font-size: var(--text-card-size);
+  line-height: var(--text-card-lh);
+  font-weight: var(--text-card-weight);
+}
+.pd-body { font-size: var(--text-body-size); line-height: var(--text-body-lh); }
+.pd-small { font-size: var(--text-small-size); line-height: var(--text-small-lh); color: var(--text-secondary); }
+.pd-caption { font-size: var(--text-caption-size); line-height: var(--text-caption-lh); color: var(--text-muted); }
+
+.pd-meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta-size);
+  font-weight: var(--text-meta-weight);
+  letter-spacing: var(--text-meta-tracking);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.pd-mono { font-family: var(--font-mono); }
+
+.pd-muted { color: var(--text-muted); }
+.pd-secondary { color: var(--text-secondary); }

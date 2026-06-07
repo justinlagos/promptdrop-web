@@ -1,0 +1,146 @@
+/* ============================================================
+   PromptDrop, Color System
+   Dark mode is the primary identity. The Prompt Drop is always
+   pure black and works best against the dark app surfaces.
+   ============================================================ */
+
+:root {
+  /* ---- Base ink scale (charcoal → near-black) ---- */
+  --black-pure:  #000000;   /* Prompt Drop surface */
+  --ink-1000:    #050506;
+  --ink-950:     #0A0A0B;   /* app background, deepest */
+  --ink-900:     #0F0F11;
+  --ink-850:     #16161A;   /* secondary background */
+  --ink-800:     #1C1C21;   /* elevated surface (cards, panels) */
+  --ink-750:     #232328;   /* hover / raised surface */
+  --ink-700:     #2A2A31;   /* borders, dividers */
+  --ink-650:     #33333B;
+  --ink-600:     #3A3A42;   /* strong border, disabled fill */
+  --ink-500:     #52525B;   /* muted icon / faint text */
+  --ink-450:     #6B6B75;
+  --ink-400:     #787878;   /* logo grey, secondary metadata */
+  --ink-350:     #8A8A93;
+  --ink-300:     #A1A1AA;   /* secondary text */
+  --ink-200:     #C9C9CF;
+  --ink-100:     #E4E4E7;
+  --ink-50:      #F4F4F5;   /* primary text (off-white) */
+  --white-pure:  #FFFFFF;
+
+  /* ---- Accent: electric blue (primary active) ---- */
+  --blue-700:    #1E4FB8;
+  --blue-600:    #2A6FF0;
+  --blue-500:    #4C8DFF;   /* accent primary */
+  --blue-400:    #6FA4FF;
+  --blue-300:    #9CC0FF;
+  --blue-glow:   rgba(76, 141, 255, 0.45);
+  --blue-tint:   rgba(76, 141, 255, 0.14);
+
+  /* ---- Accent: soft violet (secondary active) ---- */
+  --violet-600:  #6E5BF2;
+  --violet-500:  #8B7CFF;   /* accent secondary */
+  --violet-400:  #A89DFF;
+  --violet-tint: rgba(139, 124, 255, 0.14);
+
+  /* ---- Semantic hues ---- */
+  --green-500:   #2FCF8F;   /* success */
+  --green-400:   #4FE0A6;
+  --green-tint:  rgba(47, 207, 143, 0.14);
+
+  --amber-500:   #F5A524;   /* warning */
+  --amber-400:   #FBC04E;
+  --amber-tint:  rgba(245, 165, 36, 0.14);
+
+  --red-500:     #F0506E;   /* error */
+  --red-400:     #FF7088;
+  --red-tint:    rgba(240, 80, 110, 0.14);
+
+  --rec-500:     #FF3B30;   /* recording (Apple red) */
+  --rec-glow:    rgba(255, 59, 48, 0.5);
+
+  /* ============================================================
+     Semantic aliases, reference these in components.
+     ============================================================ */
+
+  /* Backgrounds & surfaces */
+  --bg-primary:        var(--ink-950);
+  --bg-secondary:      var(--ink-850);
+  --surface-elevated:  var(--ink-800);
+  --surface-raised:    var(--ink-750);
+  --surface-sunken:    var(--ink-900);
+  --surface-inset:     var(--ink-1000);
+
+  /* Prompt Drop */
+  --promptdrop-bg:     var(--black-pure);
+  --promptdrop-border: rgba(255, 255, 255, 0.08);
+  --promptdrop-inner:  #08080A;
+
+  /* Text */
+  --text-primary:      var(--ink-50);
+  --text-secondary:    var(--ink-300);
+  --text-muted:        var(--ink-400);
+  --text-disabled:     var(--ink-500);
+  --text-inverse:      var(--ink-950);
+  --text-on-accent:    var(--white-pure);
+
+  /* Accents */
+  --accent-primary:    var(--blue-500);
+  --accent-primary-strong: var(--blue-600);
+  --accent-secondary:  var(--violet-500);
+
+  /* Status */
+  --success:           var(--green-500);
+  --warning:           var(--amber-500);
+  --error:             var(--red-500);
+  --recording:         var(--rec-500);
+
+  /* Lines & structure */
+  --divider:           var(--ink-700);
+  --border-subtle:     rgba(255, 255, 255, 0.06);
+  --border-default:    var(--ink-700);
+  --border-strong:     var(--ink-600);
+
+  /* Interaction */
+  --focus-ring:        var(--blue-500);
+  --focus-ring-glow:   var(--blue-glow);
+  --overlay-dim:       rgba(5, 5, 6, 0.72);
+  --disabled-bg:       var(--ink-800);
+  --disabled-fg:       var(--ink-500);
+
+  /* Teleprompter text rendering */
+  --tp-current:        var(--ink-50);
+  --tp-adjacent:       rgba(244, 244, 245, 0.42);
+  --tp-far:            rgba(244, 244, 245, 0.16);
+}
+
+/* ============================================================
+   Light mode, secondary. Provided for the control app only;
+   the Prompt Drop itself stays dark in every theme.
+   ============================================================ */
+
+[data-theme="light"] {
+  --bg-primary:        #FBFBFC;
+  --bg-secondary:      #F2F2F4;
+  --surface-elevated:  #FFFFFF;
+  --surface-raised:    #FFFFFF;
+  --surface-sunken:    #ECECEF;
+  --surface-inset:     #E4E4E7;
+
+  --text-primary:      #16161A;
+  --text-secondary:    #52525B;
+  --text-muted:        #787878;
+  --text-disabled:     #A1A1AA;
+  --text-inverse:      #FBFBFC;
+
+  --divider:           #E4E4E7;
+  --border-subtle:     rgba(0, 0, 0, 0.06);
+  --border-default:    #E4E4E7;
+  --border-strong:     #C9C9CF;
+
+  --overlay-dim:       rgba(16, 16, 18, 0.5);
+  --disabled-bg:       #F2F2F4;
+  --disabled-fg:       #A1A1AA;
+
+  /* Prompt Drop stays dark, unchanged on purpose */
+  --promptdrop-bg:     var(--black-pure);
+  --promptdrop-border: rgba(255, 255, 255, 0.08);
+}

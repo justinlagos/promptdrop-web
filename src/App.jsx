@@ -12,13 +12,22 @@ import Scripts from "./pages/Scripts.jsx";
 import Welcome from "./pages/Welcome.jsx";
 import StudioEmbed from "./pages/StudioEmbed.jsx";
 import Legal from "./pages/Legal.jsx";
+import { useIsMobile } from "./mobile/useIsMobile.js";
+
+// Phones get the purpose-built native mobile app (vendored at /m); large screens get the studio.
+function MobileApp() {
+  return <iframe title="PromptDrop" src="/m/index.html" allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write" style={{ position: "fixed", inset: 0, width: "100vw", height: "100dvh", border: "none", background: "#0a0a0b" }} />;
+}
+function AppArea() {
+  const mobile = useIsMobile();
+  return mobile ? <MobileApp /> : <StudioEmbed />;
+}
 
 function Shell() {
   const { pathname } = useLocation();
   const bare = pathname.startsWith("/app");   // app runs full-screen, no marketing chrome
 
-  // Same studio on every device (mobile gets a touch-optimised layout via studio mobile.css).
-  if (bare) return <StudioEmbed />;
+  if (bare) return <AppArea />;
 
   return (
     <>

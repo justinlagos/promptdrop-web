@@ -41,11 +41,19 @@ export default function Download() {
       <section style={{ marginTop: 36 }}>
         <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 14 }}>Install</h2>
         <ol style={{ paddingLeft: 18, color: "var(--text-secondary)", lineHeight: 1.7, fontSize: 15 }}>
-          <li>Open the <code>.dmg</code> and drag PromptDrop to Applications.</li>
-          <li>First launch: right-click PromptDrop → <strong>Open</strong> (one-time, until the build is notarised).</li>
+          <li>Open the <code>.dmg</code> and drag PromptDrop to your <strong>Applications</strong> folder.</li>
+          <li>First launch: right-click PromptDrop in Applications → <strong>Open</strong> → <strong>Open</strong>.</li>
           <li>Allow Camera and Microphone when asked.</li>
           <li>For global shortcuts and the floating overlay, grant <strong>Accessibility</strong> and <strong>Screen Recording</strong> in System Settings → Privacy &amp; Security.</li>
         </ol>
+
+        <div className="card" style={{ padding: "16px 18px", marginTop: 16, borderColor: "rgba(245,165,36,.35)" }}>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>If macOS says PromptDrop is "damaged" or asks you to move it to the Bin</div>
+          <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.6, margin: "0 0 10px" }}>
+            That's macOS blocking apps that aren't yet notarised by Apple, the app is fine. After dragging PromptDrop to Applications, open <strong>Terminal</strong> and run this once, then launch it normally:
+          </p>
+          <pre style={{ background: "var(--surface-sunken)", border: "1px solid var(--border-default)", borderRadius: 10, padding: "12px 14px", overflowX: "auto", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text-primary)", margin: 0 }}>xattr -dr com.apple.quarantine /Applications/PromptDrop.app</pre>
+        </div>
       </section>
 
       <section style={{ marginTop: 28 }}>
