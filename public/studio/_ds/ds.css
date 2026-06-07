@@ -1,0 +1,594 @@
+/* ============================================================
+   PromptDrop, Web Fonts
+   - Manrope        : UI + teleprompter grotesque (display → body)
+   - JetBrains Mono : logo wordmark, metadata, shortcuts, code
+   Loaded from the Google Fonts CDN. For production, self-host the
+   woff2 binaries and repoint the src URLs below.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap');
+/* ============================================================
+   PromptDrop, Color System
+   Dark mode is the primary identity. The Prompt Drop is always
+   pure black and works best against the dark app surfaces.
+   ============================================================ */
+
+:root {
+  /* ---- Base ink scale (charcoal → near-black) ---- */
+  --black-pure:  #000000;   /* Prompt Drop surface */
+  --ink-1000:    #050506;
+  --ink-950:     #0A0A0B;   /* app background, deepest */
+  --ink-900:     #0F0F11;
+  --ink-850:     #16161A;   /* secondary background */
+  --ink-800:     #1C1C21;   /* elevated surface (cards, panels) */
+  --ink-750:     #232328;   /* hover / raised surface */
+  --ink-700:     #2A2A31;   /* borders, dividers */
+  --ink-650:     #33333B;
+  --ink-600:     #3A3A42;   /* strong border, disabled fill */
+  --ink-500:     #52525B;   /* muted icon / faint text */
+  --ink-450:     #6B6B75;
+  --ink-400:     #787878;   /* logo grey, secondary metadata */
+  --ink-350:     #8A8A93;
+  --ink-300:     #A1A1AA;   /* secondary text */
+  --ink-200:     #C9C9CF;
+  --ink-100:     #E4E4E7;
+  --ink-50:      #F4F4F5;   /* primary text (off-white) */
+  --white-pure:  #FFFFFF;
+
+  /* ---- Accent: electric blue (primary active) ---- */
+  --blue-700:    #1E4FB8;
+  --blue-600:    #2A6FF0;
+  --blue-500:    #4C8DFF;   /* accent primary */
+  --blue-400:    #6FA4FF;
+  --blue-300:    #9CC0FF;
+  --blue-glow:   rgba(76, 141, 255, 0.45);
+  --blue-tint:   rgba(76, 141, 255, 0.14);
+
+  /* ---- Accent: soft violet (secondary active) ---- */
+  --violet-600:  #6E5BF2;
+  --violet-500:  #8B7CFF;   /* accent secondary */
+  --violet-400:  #A89DFF;
+  --violet-tint: rgba(139, 124, 255, 0.14);
+
+  /* ---- Semantic hues ---- */
+  --green-500:   #2FCF8F;   /* success */
+  --green-400:   #4FE0A6;
+  --green-tint:  rgba(47, 207, 143, 0.14);
+
+  --amber-500:   #F5A524;   /* warning */
+  --amber-400:   #FBC04E;
+  --amber-tint:  rgba(245, 165, 36, 0.14);
+
+  --red-500:     #F0506E;   /* error */
+  --red-400:     #FF7088;
+  --red-tint:    rgba(240, 80, 110, 0.14);
+
+  --rec-500:     #FF3B30;   /* recording (Apple red) */
+  --rec-glow:    rgba(255, 59, 48, 0.5);
+
+  /* ============================================================
+     Semantic aliases, reference these in components.
+     ============================================================ */
+
+  /* Backgrounds & surfaces */
+  --bg-primary:        var(--ink-950);
+  --bg-secondary:      var(--ink-850);
+  --surface-elevated:  var(--ink-800);
+  --surface-raised:    var(--ink-750);
+  --surface-sunken:    var(--ink-900);
+  --surface-inset:     var(--ink-1000);
+
+  /* Prompt Drop */
+  --promptdrop-bg:     var(--black-pure);
+  --promptdrop-border: rgba(255, 255, 255, 0.08);
+  --promptdrop-inner:  #08080A;
+
+  /* Text */
+  --text-primary:      var(--ink-50);
+  --text-secondary:    var(--ink-300);
+  --text-muted:        var(--ink-400);
+  --text-disabled:     var(--ink-500);
+  --text-inverse:      var(--ink-950);
+  --text-on-accent:    var(--white-pure);
+
+  /* Accents */
+  --accent-primary:    var(--blue-500);
+  --accent-primary-strong: var(--blue-600);
+  --accent-secondary:  var(--violet-500);
+
+  /* Status */
+  --success:           var(--green-500);
+  --warning:           var(--amber-500);
+  --error:             var(--red-500);
+  --recording:         var(--rec-500);
+
+  /* Lines & structure */
+  --divider:           var(--ink-700);
+  --border-subtle:     rgba(255, 255, 255, 0.06);
+  --border-default:    var(--ink-700);
+  --border-strong:     var(--ink-600);
+
+  /* Interaction */
+  --focus-ring:        var(--blue-500);
+  --focus-ring-glow:   var(--blue-glow);
+  --overlay-dim:       rgba(5, 5, 6, 0.72);
+  --disabled-bg:       var(--ink-800);
+  --disabled-fg:       var(--ink-500);
+
+  /* Teleprompter text rendering */
+  --tp-current:        var(--ink-50);
+  --tp-adjacent:       rgba(244, 244, 245, 0.42);
+  --tp-far:            rgba(244, 244, 245, 0.16);
+}
+
+/* ============================================================
+   Light mode, secondary. Provided for the control app only;
+   the Prompt Drop itself stays dark in every theme.
+   ============================================================ */
+
+[data-theme="light"] {
+  --bg-primary:        #FBFBFC;
+  --bg-secondary:      #F2F2F4;
+  --surface-elevated:  #FFFFFF;
+  --surface-raised:    #FFFFFF;
+  --surface-sunken:    #ECECEF;
+  --surface-inset:     #E4E4E7;
+
+  --text-primary:      #16161A;
+  --text-secondary:    #52525B;
+  --text-muted:        #787878;
+  --text-disabled:     #A1A1AA;
+  --text-inverse:      #FBFBFC;
+
+  --divider:           #E4E4E7;
+  --border-subtle:     rgba(0, 0, 0, 0.06);
+  --border-default:    #E4E4E7;
+  --border-strong:     #C9C9CF;
+
+  --overlay-dim:       rgba(16, 16, 18, 0.5);
+  --disabled-bg:       #F2F2F4;
+  --disabled-fg:       #A1A1AA;
+
+  /* Prompt Drop stays dark, unchanged on purpose */
+  --promptdrop-bg:     var(--black-pure);
+  --promptdrop-border: rgba(255, 255, 255, 0.08);
+}
+/* ============================================================
+   PromptDrop, Typography System
+   Manrope for UI + reading surface · JetBrains Mono for metadata.
+   Scale is purpose-built: a control app (compact, dense) and a
+   teleprompter (large, high-contrast, readable from a distance).
+   ============================================================ */
+
+:root {
+  /* ---- Families ---- */
+  --font-sans: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: var(--font-sans);
+
+  /* ---- Weights ---- */
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semibold: 600;
+  --weight-bold:    700;
+  --weight-extrabold: 800;
+
+  /* ---- Raw type scale (px) ---- */
+  --fs-11: 0.6875rem;  /* 11 */
+  --fs-12: 0.75rem;    /* 12 */
+  --fs-13: 0.8125rem;  /* 13 */
+  --fs-14: 0.875rem;   /* 14 */
+  --fs-15: 0.9375rem;  /* 15 */
+  --fs-16: 1rem;       /* 16 */
+  --fs-18: 1.125rem;   /* 18 */
+  --fs-20: 1.25rem;    /* 20 */
+  --fs-24: 1.5rem;     /* 24 */
+  --fs-30: 1.875rem;   /* 30 */
+  --fs-38: 2.375rem;   /* 38 */
+  --fs-48: 3rem;       /* 48 */
+  --fs-60: 3.75rem;    /* 60 */
+  --fs-72: 4.5rem;     /* 72 */
+
+  /* ---- Line heights ---- */
+  --lh-tight:   1.05;   /* @kind other */
+  --lh-snug:    1.2;    /* @kind other */
+  --lh-normal:  1.45;   /* @kind other */
+  --lh-relaxed: 1.6;    /* @kind other */
+
+  /* ---- Letter spacing ---- */
+  --tracking-tighter: -0.03em;
+  --tracking-tight:   -0.018em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.02em;
+  --tracking-caps:    0.08em;   /* mono labels, eyebrows */
+
+  /* ============================================================
+     Semantic text roles, control app
+     Each role: size / line-height / weight / tracking
+     ============================================================ */
+
+  /* Display hero (landing) */
+  --text-display-size: var(--fs-72);
+  --text-display-lh: var(--lh-tight);
+  --text-display-weight: var(--weight-extrabold);
+  --text-display-tracking: var(--tracking-tighter);
+
+  /* Page title */
+  --text-title-size: var(--fs-30);
+  --text-title-lh: var(--lh-snug);
+  --text-title-weight: var(--weight-bold);
+  --text-title-tracking: var(--tracking-tight);
+
+  /* Section title */
+  --text-section-size: var(--fs-20);
+  --text-section-lh: var(--lh-snug);
+  --text-section-weight: var(--weight-semibold);
+  --text-section-tracking: var(--tracking-tight);
+
+  /* Card title */
+  --text-card-size: var(--fs-16);
+  --text-card-lh: var(--lh-snug);
+  --text-card-weight: var(--weight-semibold);
+  --text-card-tracking: var(--tracking-normal);
+
+  /* Body */
+  --text-body-size: var(--fs-15);
+  --text-body-lh: var(--lh-normal);
+  --text-body-weight: var(--weight-regular);
+
+  /* Small body */
+  --text-small-size: var(--fs-13);
+  --text-small-lh: var(--lh-normal);
+
+  /* Caption */
+  --text-caption-size: var(--fs-12);
+  --text-caption-lh: var(--lh-normal);
+
+  /* Button */
+  --text-button-size: var(--fs-14);
+  --text-button-weight: var(--weight-semibold);
+  --text-button-tracking: -0.005em;
+
+  /* Label (form) */
+  --text-label-size: var(--fs-13);
+  --text-label-weight: var(--weight-medium);
+
+  /* Input */
+  --text-input-size: var(--fs-14);
+
+  /* Metadata / eyebrow (mono) */
+  --text-meta-size: var(--fs-12);
+  --text-meta-weight: var(--weight-medium);
+  --text-meta-tracking: var(--tracking-caps);
+
+  /* ============================================================
+     Teleprompter roles, the reading surface
+     Sizes are fluid; the app scales current-line size at runtime.
+     ============================================================ */
+  --tp-current-size: clamp(2rem, 4.4vw, 3.25rem);
+  --tp-current-lh: 1.35;   /* @kind other */
+  --tp-current-weight: var(--weight-semibold);
+  --tp-current-tracking: -0.01em;
+
+  --tp-adjacent-size: clamp(1.5rem, 3.2vw, 2.4rem);
+  --tp-adjacent-weight: var(--weight-medium);
+
+  --countdown-size: clamp(4rem, 14vw, 9rem);
+  --countdown-weight: var(--weight-bold);
+  --countdown-tracking: var(--tracking-tight);
+
+  --status-size: var(--fs-14);
+  --status-weight: var(--weight-medium);
+}
+/* ============================================================
+   PromptDrop, Spacing & Layout
+   8px base with a 4px half-step for fine control. The app should
+   feel spacious; the Prompt Drop needs generous safe areas so
+   text and the character never crowd the edges.
+   ============================================================ */
+
+:root {
+  /* ---- Core scale ---- */
+  --space-0:  0;
+  --space-1:  2px;
+  --space-2:  4px;
+  --space-3:  8px;
+  --space-4:  12px;
+  --space-5:  16px;
+  --space-6:  20px;
+  --space-7:  24px;
+  --space-8:  32px;
+  --space-9:  40px;
+  --space-10: 48px;
+  --space-11: 56px;
+  --space-12: 64px;
+  --space-14: 80px;
+  --space-16: 96px;
+  --space-20: 128px;
+
+  /* ---- Semantic spacing ---- */
+  --page-padding-x: var(--space-10);    /* desktop gutter */
+  --page-padding-y: var(--space-8);
+  --card-padding:   var(--space-7);      /* 24 */
+  --card-padding-sm: var(--space-5);     /* 16 */
+  --panel-padding:  var(--space-7);
+  --panel-gap:      var(--space-5);
+  --control-gap:    var(--space-4);      /* between settings rows */
+  --form-gap:       var(--space-5);      /* between fields */
+  --toolbar-gap:    var(--space-3);
+  --inline-gap:     var(--space-3);
+  --stack-gap:      var(--space-5);
+
+  /* ---- Prompt Drop interior ---- */
+  --promptdrop-pad-x: var(--space-12);   /* horizontal text inset */
+  --promptdrop-pad-y: var(--space-9);
+  --promptdrop-text-safe: var(--space-14); /* current line breathing room */
+  --character-safe: var(--space-8);      /* clearance around character */
+
+  /* ---- Fullscreen / focus mode ---- */
+  --fullscreen-pad: var(--space-16);
+
+  /* ---- Layout dimensions ---- */
+  --nav-width: 248px;            /* global left nav */
+  --nav-width-collapsed: 68px;
+  --library-panel-width: 300px;  /* Script Studio left */
+  --settings-panel-width: 360px; /* Script Studio right */
+  --topbar-height: 60px;
+  --playback-height: 84px;
+  --content-max: 1280px;
+  --reading-max: 720px;          /* comfortable script editor measure */
+
+  /* ---- Breakpoints (reference values) ---- */
+  --bp-mobile: 480px;
+  --bp-tablet: 768px;
+  --bp-laptop: 1024px;
+  --bp-desktop: 1280px;
+  --bp-wide: 1680px;
+}
+/* ============================================================
+   PromptDrop, Radius & Shadow
+   Soft, premium elevation. The Prompt Drop radius is the single
+   most recognisable shape in the brand, large, continuous,
+   notch-like. Shadows are diffuse and low-contrast, never heavy.
+   ============================================================ */
+
+:root {
+  /* ---- Radius ---- */
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   10px;   /* default control radius */
+  --radius-lg:   14px;   /* cards */
+  --radius-xl:   20px;   /* panels, modals */
+  --radius-2xl:  28px;   /* large surfaces */
+  --radius-pill: 999px;
+  --radius-promptdrop: 40px;  /* the hero drop corner */
+  --radius-notch: 22px;       /* docked / camera-notch corner */
+
+  /* ---- Shadows (dark UI) ---- */
+  --shadow-subtle:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.03);
+
+  --shadow-surface:
+    0 2px 6px rgba(0, 0, 0, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+
+  --shadow-elevated:
+    0 12px 32px -8px rgba(0, 0, 0, 0.6),
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+
+  --shadow-floating:
+    0 20px 48px -12px rgba(0, 0, 0, 0.7),
+    0 4px 12px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  /* The Prompt Drop "lifts" from the bezel, deep, soft, grounded */
+  --shadow-promptdrop:
+    0 30px 80px -20px rgba(0, 0, 0, 0.85),
+    0 12px 28px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+
+  /* Recording active glow (subtle red halo) */
+  --glow-recording:
+    0 0 0 1px rgba(255, 59, 48, 0.4),
+    0 0 24px rgba(255, 59, 48, 0.35);
+
+  /* Focus glow (blue) */
+  --glow-focus:
+    0 0 0 2px var(--bg-primary),
+    0 0 0 4px var(--blue-500),
+    0 0 16px rgba(76, 141, 255, 0.4);
+
+  --glow-accent:
+    0 0 24px rgba(76, 141, 255, 0.3);
+}
+
+[data-theme="light"] {
+  --shadow-subtle:
+    0 1px 2px rgba(16, 16, 18, 0.06),
+    0 0 0 1px rgba(16, 16, 18, 0.05);
+  --shadow-surface:
+    0 1px 3px rgba(16, 16, 18, 0.08),
+    0 0 0 1px rgba(16, 16, 18, 0.04);
+  --shadow-elevated:
+    0 12px 32px -10px rgba(16, 16, 18, 0.16),
+    0 2px 6px rgba(16, 16, 18, 0.08);
+  --shadow-floating:
+    0 20px 48px -14px rgba(16, 16, 18, 0.2),
+    0 4px 12px rgba(16, 16, 18, 0.1);
+}
+/* ============================================================
+   PromptDrop, Motion & Z-Index
+   Calm, physical, purposeful. The signature gesture is the
+   Prompt Drop expanding from the camera zone, a soft spring,
+   never bouncy. Reduced-motion replaces movement with fades.
+   ============================================================ */
+
+:root {
+  /* ---- Durations ---- */
+  --dur-instant: 80ms;    /* @kind other */
+  --dur-fast:    140ms;   /* @kind other */
+  --dur-standard: 220ms;  /* @kind other */
+  --dur-slow:    340ms;   /* @kind other */
+  --dur-expand:  480ms;   /* @kind other */
+  --dur-gesture: 600ms;   /* @kind other */
+
+  /* ---- Easing ---- */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);    /* @kind other */
+  --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);   /* @kind other */
+  --ease-in:       cubic-bezier(0.4, 0, 1, 1);      /* @kind other */
+  --ease-spring:   cubic-bezier(0.34, 1.32, 0.5, 1); /* @kind other */
+  --ease-drop:     cubic-bezier(0.22, 1, 0.36, 1);   /* @kind other */
+
+  /* ---- Composed transitions ---- */
+  --transition-fast:     all var(--dur-fast) var(--ease-standard);       /* @kind other */
+  --transition-standard: all var(--dur-standard) var(--ease-standard);   /* @kind other */
+  --transition-slow:     all var(--dur-slow) var(--ease-out);            /* @kind other */
+  --transition-color:    color var(--dur-fast) var(--ease-standard),
+                         background-color var(--dur-fast) var(--ease-standard),
+                         border-color var(--dur-fast) var(--ease-standard);  /* @kind other */
+
+  /* ---- Signature motions ---- */
+  --motion-promptdrop-expand: transform var(--dur-expand) var(--ease-drop),
+                              opacity var(--dur-standard) var(--ease-out);  /* @kind other */
+  --motion-gesture: transform var(--dur-gesture) var(--ease-spring);     /* @kind other */
+
+  /* Recording pulse period */
+  --pulse-period: 1.8s;    /* @kind other */
+
+  /* ---- Z-index scale ---- */
+  --z-base:        0;      /* @kind other */
+  --z-raised:      10;     /* @kind other */
+  --z-sticky:      100;    /* @kind other */
+  --z-nav:         200;    /* @kind other */
+  --z-panel:       300;    /* @kind other */
+  --z-dropdown:    400;    /* @kind other */
+  --z-overlay:     900;    /* @kind other */
+  --z-modal:       1000;   /* @kind other */
+  --z-toast:       1100;   /* @kind other */
+  --z-promptdrop:  2000;   /* @kind other */
+  --z-tooltip:     2100;   /* @kind other */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 1ms;      /* @kind other */
+    --dur-standard: 1ms;  /* @kind other */
+    --dur-slow: 1ms;      /* @kind other */
+    --dur-expand: 1ms;    /* @kind other */
+    --dur-gesture: 1ms;   /* @kind other */
+    --ease-spring: var(--ease-standard);  /* @kind other */
+    --ease-drop: var(--ease-standard);    /* @kind other */
+  }
+}
+/* ============================================================
+   PromptDrop, Base layer
+   Light reset, sensible element defaults, scrollbar styling,
+   and a small set of typography/utility helpers built on tokens.
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-lh);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv01";
+}
+
+h1, h2, h3, h4, h5, h6, p, figure { margin: 0; }
+
+a { color: inherit; text-decoration: none; }
+
+button, input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+::selection { background: var(--blue-tint); color: var(--text-primary); }
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--glow-focus);
+  border-radius: var(--radius-sm);
+}
+
+/* ---- Custom scrollbar (dark) ---- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-600) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--ink-600);
+  border-radius: var(--radius-pill);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--ink-500); background-clip: content-box; }
+
+/* ============================================================
+   Typography helpers
+   ============================================================ */
+.pd-display {
+  font-size: var(--text-display-size);
+  line-height: var(--text-display-lh);
+  font-weight: var(--text-display-weight);
+  letter-spacing: var(--text-display-tracking);
+}
+.pd-title {
+  font-size: var(--text-title-size);
+  line-height: var(--text-title-lh);
+  font-weight: var(--text-title-weight);
+  letter-spacing: var(--text-title-tracking);
+}
+.pd-section {
+  font-size: var(--text-section-size);
+  line-height: var(--text-section-lh);
+  font-weight: var(--text-section-weight);
+  letter-spacing: var(--text-section-tracking);
+}
+.pd-card-title {
+  font-size: var(--text-card-size);
+  line-height: var(--text-card-lh);
+  font-weight: var(--text-card-weight);
+}
+.pd-body { font-size: var(--text-body-size); line-height: var(--text-body-lh); }
+.pd-small { font-size: var(--text-small-size); line-height: var(--text-small-lh); color: var(--text-secondary); }
+.pd-caption { font-size: var(--text-caption-size); line-height: var(--text-caption-lh); color: var(--text-muted); }
+
+.pd-meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta-size);
+  font-weight: var(--text-meta-weight);
+  letter-spacing: var(--text-meta-tracking);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.pd-mono { font-family: var(--font-mono); }
+
+.pd-muted { color: var(--text-muted); }
+.pd-secondary { color: var(--text-secondary); }
+/* ============================================================
+   PromptDrop Design System, global entry point.
+   Consumers link this one file. Import order matters: fonts and
+   tokens first, base layer last.
+   ============================================================ */
+
+@import "tokens/fonts.css";
+@import "tokens/colors.css";
+@import "tokens/typography.css";
+@import "tokens/spacing.css";
+@import "tokens/radius-shadow.css";
+@import "tokens/motion.css";
+@import "tokens/base.css";

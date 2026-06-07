@@ -1,0 +1,44 @@
+/* Hero drop, generous breathing room so the shadow renders fully, never clipped */
+.drop-stage{
+  position:relative;
+  width:min(560px,100%);
+  margin:0 auto;
+  padding:48px 40px 64px;       /* room for the soft shadow on every side */
+  display:flex;align-items:flex-start;justify-content:center;
+  overflow:visible;             /* never clip the shadow */
+}
+/* separate blurred shadow ellipsis under the drop (pointer-events none) */
+.drop-shadow{
+  position:absolute;
+  left:50%;bottom:34px;transform:translateX(-50%);
+  width:74%;height:120px;border-radius:50%;
+  background:radial-gradient(closest-side, rgba(0,0,0,.55), rgba(0,0,0,0) 70%);
+  filter:blur(30px);opacity:.5;pointer-events:none;z-index:0;
+}
+.drop{
+  position:relative;z-index:1;
+  width:100%;
+  background:var(--black-pure);
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:var(--radius-promptdrop);
+  box-shadow:
+    0 28px 80px rgba(0,0,0,.30),
+    0 10px 28px rgba(0,0,0,.20),
+    inset 0 1px 0 rgba(255,255,255,.06);
+  display:flex;flex-direction:column;align-items:center;
+  padding-bottom:26px;overflow:hidden;
+}
+.drop__dots{display:flex;gap:12px;padding-top:18px}
+.drop__dots i{width:8px;height:8px;border-radius:50%;background:var(--ink-50);opacity:.92}
+.drop__body{display:flex;flex-direction:column;align-items:center;gap:14px;padding:22px 26px 6px;text-align:center;width:100%}
+.drop__char{margin-bottom:2px}
+.drop__eyebrow{font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-muted)}
+.drop__reader{display:flex;flex-direction:column;gap:10px;width:100%;padding:6px 0}
+.drop__line{letter-spacing:-.01em;line-height:1.3;font-weight:500}
+.drop__line--far{font-size:16px;color:var(--tp-far)}
+.drop__line--cur{font-size:26px;color:var(--tp-current);font-weight:700;text-shadow:0 0 28px rgba(255,255,255,.18)}
+.drop__status{font-family:var(--font-mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:#FF8077;display:inline-flex;align-items:center;gap:7px;margin-top:2px}
+@media (max-width:520px){
+  .drop-stage{padding:32px 16px 52px}
+  .drop__line--cur{font-size:22px}
+}

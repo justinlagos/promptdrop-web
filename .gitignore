@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.vercel/
+build_check/
+bc_*/
+*.log
+.DS_Store
+.fuse_hidden*
+*.timestamp-*.mjs

@@ -1,0 +1,96 @@
+/* ============================================================
+   PromptDrop studio, mobile layer. Turns the desktop sidebar app
+   into a native-feeling mobile app: bottom tab bar, fluid pages,
+   single-column, full-bleed live prompter. Loads only on phones.
+   ============================================================ */
+@media (max-width: 860px) {
+  html, body, #pd-root { height: 100%; overflow: hidden; }
+
+  /* app frame -> single column, content above a bottom tab bar */
+  .app {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr auto !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    height: 100dvh !important;
+  }
+
+  /* content column on top, scrollable */
+  .main { order: 1; overflow-y: auto !important; overflow-x: hidden; min-width: 0; -webkit-overflow-scrolling: touch; }
+
+  /* sidebar -> fixed bottom tab bar */
+  .nav {
+    order: 2;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    justify-content: space-between;
+    gap: 2px !important;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom)) !important;
+    border-right: none !important;
+    border-top: 1px solid var(--divider);
+    background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+    backdrop-filter: blur(12px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+
+  /* hide desktop-only sidebar chrome */
+  .nav .pd-lockup, .nav__section, .nav__spacer, .nav .divider, .nav__upgrade, .nav__profile .stack { display: none !important; }
+
+  /* nav items -> compact icon-over-label tabs */
+  .navitem {
+    flex: 0 0 auto !important;
+    flex-direction: column !important;
+    gap: 3px !important;
+    padding: 7px 12px !important;
+    min-width: 60px;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    line-height: 1.1 !important;
+    white-space: nowrap;
+    text-align: center !important;
+    justify-content: center !important;
+    border-radius: 12px;
+  }
+  .navitem svg { width: 21px !important; height: 21px !important; }
+  .nav__profile { flex: 0 0 auto !important; padding: 6px !important; align-self: center; }
+
+  /* topbar -> slim mobile header */
+  .topbar { height: auto !important; min-height: 0 !important; padding: 12px 16px !important; gap: 8px; }
+  .topbar h1 { font-size: 19px !important; }
+  .topbar__right { flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+  .topbar__right .btn, .topbar__right button { font-size: 13px; }
+
+  /* pages -> fluid, with clearance above the tab bar handled by grid */
+  .page { padding: 16px !important; max-width: none !important; }
+
+  /* collapse multi-column grids */
+  .grid-3, .grid-2 { grid-template-columns: 1fr !important; }
+
+  /* settings rows -> stack control under label, full-width sliders */
+  .setrow { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 0; }
+  .setrow__control { flex: none; justify-content: flex-start; flex-wrap: wrap; }
+  input[type="range"], .slider { width: 100% !important; }
+  .seg, .seg--block { width: 100% !important; flex-wrap: wrap; }
+
+  /* the prompt-settings live preview should never overflow */
+  .page [class*="MiniDrop"], .page svg, .page img { max-width: 100%; }
+
+  /* editor textareas comfortable on mobile */
+  textarea { font-size: 16px !important; }   /* 16px stops iOS zoom-on-focus */
+  input, select { font-size: 16px !important; }
+
+  /* live prompter already fills the screen; make controls touch-sized */
+  .lt-bar button, .drop .b, .b { min-height: 40px; }
+  .lt-bar { opacity: 1 !important; }          /* always show controls on touch (no hover) */
+}
+
+/* very small phones */
+@media (max-width: 380px) {
+  .navitem { min-width: 52px; padding: 7px 8px !important; font-size: 9px !important; }
+  .navitem svg { width: 19px !important; height: 19px !important; }
+}
