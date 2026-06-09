@@ -63,17 +63,24 @@ function ctPauseDecisions(silences, preset) {
 }
 
 // ---- clean-preview player: plays the original, skipping removed segments ----
-function CleanPreview({ url, removed, rate, filterCss, active, vref }) {
+// Speed (playbackRate), Style (CSS filter) and Trim (start/end) all visibly affect
+// this preview. Browsers reset playbackRate on load/play, so we re-apply it.
+function CleanPreview({ url, removed, rate, filterCss, active, trimStart, trimEnd, duration, vref }) {
   const ref = vref || React.useRef(null);
-  const kept = React.useMemo(() => ctKept(1e9, removed).map((k) => k), [removed]);   // duration clamps later
-  const idxRef = React.useRef(0);
-  React.useEffect(() => { const v = ref.current; if (v) v.playbackRate = rate || 1; }, [rate]);
+  const applyRate = React.useCallback(() => { const v = ref.current; if (v) { try { v.playbackRate = active ? (rate || 1) : 1; } catch (e) {} } }, [rate, active]);
+  React.useEffect(() => { applyRate(); }, [applyRate, url]);
   function onTime() {
-    const v = ref.current; if (!v || !active) return;
-    const segs = ctMerge(removed); const t = v.currentTime;
+    const v = ref.current; if (!v) return;
+    if (!active) return;
+    const t = v.currentTime;
+    // respect trim end
+    if (trimEnd > 0 && duration && t >= duration - trimEnd - 0.05) { try { v.pause(); } catch (e) {} }
+    // skip removed segments
+    const segs = ctMerge(removed);
     for (const s of segs) { if (t >= s.start - 0.02 && t < s.end - 0.05) { try { v.currentTime = s.end + 0.001; } catch (e) {} break; } }
   }
-  return <video ref={ref} src={url} playsInline controls preload="metadata" onTimeUpdate={active ? onTime : undefined} style={{ width: "100%", height: "100%", objectFit: "cover", background: "#000", filter: filterCss || "none" }} />;
+  function onPlay() { applyRate(); const v = ref.current; if (v && active && trimStart > 0 && v.currentTime < trimStart) { try { v.currentTime = trimStart + 0.001; } catch (e) {} } }
+  return <video ref={ref} src={url} playsInline controls preload="metadata" onLoadedMetadata={applyRate} onPlay={onPlay} onRateChange={applyRate} onTimeUpdate={onTime} style={{ width: "100%", height: "100%", objectFit: "contain", background: "#000", filter: filterCss || "none", transition: "filter .12s ease" }} />;
 }
 
 // ---- the Clean Take screen (replaces the old Take review) -----------------
@@ -177,25 +184,25 @@ function CleanTakeScreen({ app }) {
     <Screen>
       <NavHeader onBack={app.back} title="Clean Take" action={hasVideo ? <button className="pd-tap" style={iconBtn} onClick={download}><Icon name="download" size={19} color="var(--text-secondary)" /></button> : null} />
 
-      {/* video + before/after */}
-      <div style={{ padding: "0 16px" }}>
-        <div style={{ borderRadius: 20, overflow: "hidden", position: "relative", aspectRatio: "9 / 13", maxHeight: 360, background: "#000" }}>
-          {hasVideo ? <CleanPreview vref={vref} url={url} removed={view === "clean" ? removed : []} rate={view === "clean" ? rate : 1} filterCss={view === "clean" ? filterCss : "none"} active={view === "clean"} />
+      {/* Sticky compact video that stays visible while controls scroll underneath */}
+      <div style={{ flexShrink: 0, padding: "0 14px" }}>
+        <div style={{ borderRadius: 18, overflow: "hidden", position: "relative", height: "clamp(150px, 36vh, 320px)", background: "#000" }}>
+          {hasVideo ? <CleanPreview vref={vref} url={url} removed={view === "clean" ? removed : []} rate={view === "clean" ? rate : 1} filterCss={view === "clean" ? filterCss : "none"} active={view === "clean"} trimStart={view === "clean" ? trimStart : 0} trimEnd={view === "clean" ? trimEnd : 0} duration={dur} />
             : <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 26, textAlign: "center", gap: 8 }}>
-                <PromptCharacter state={loaded ? "idle" : "processing"} size={64} />
+                <PromptCharacter state={loaded ? "idle" : "processing"} size={56} />
                 <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>{loaded ? "No video was captured" : "Loading…"}</div>
                 {loaded && <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 260 }}>This browser may not support in-app recording. Allow camera and microphone, or record from the desktop app.</div>}
               </div>}
         </div>
         {hasVideo && (
-          <div style={{ display: "flex", background: "var(--surface-sunken)", borderRadius: 10, padding: 3, gap: 2, marginTop: 12 }}>
+          <div style={{ display: "flex", background: "var(--surface-sunken)", borderRadius: 10, padding: 3, gap: 2, marginTop: 10 }}>
             {[["original", "Original"], ["clean", "Clean Edit"]].map(([v, l]) => (
-              <button key={v} className="pd-tap" onClick={() => setView(v)} style={{ flex: 1, height: 36, borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 13.5, fontWeight: 600, background: view === v ? "var(--surface-raised)" : "transparent", color: view === v ? "var(--text-primary)" : "var(--text-muted)" }}>{l}</button>
+              <button key={v} className="pd-tap" onClick={() => setView(v)} style={{ flex: 1, height: 34, borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 13, fontWeight: 600, background: view === v ? "var(--surface-raised)" : "transparent", color: view === v ? "var(--text-primary)" : "var(--text-muted)" }}>{l}</button>
             ))}
           </div>
         )}
         {hasVideo && (
-          <div style={{ marginTop: 10, fontSize: 13.5, color: "var(--text-secondary)", textAlign: "center", lineHeight: 1.5 }}>
+          <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--text-secondary)", textAlign: "center", lineHeight: 1.45 }}>
             {preset !== "Off" || trimStart || trimEnd
               ? <>Removed {pauseDecisions.length} pause{pauseDecisions.length === 1 ? "" : "s"} and {ctClock(removedSec)}. Clean Take is {ctClock(cleanDur)} (was {ctClock(dur)}).</>
               : <>Original {ctClock(dur)}. Turn on pause cleanup to tighten it.</>}
@@ -203,14 +210,15 @@ function CleanTakeScreen({ app }) {
         )}
       </div>
 
-      {/* tabs */}
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "16px 16px 8px" }} className="pd-hscroll">
+      {/* tabs (sticky under the video) */}
+      <div style={{ flexShrink: 0, display: "flex", gap: 6, overflowX: "auto", padding: "12px 14px 8px" }} className="pd-hscroll">
         {TABS.map((o) => (
-          <button key={o} className="pd-tap" onClick={() => setTab(o)} style={{ flexShrink: 0, height: 34, padding: "0 14px", borderRadius: 999, border: "1px solid var(--border-default)", cursor: "pointer", fontSize: 13, fontWeight: 600, background: tab === o ? "var(--accent-primary)" : "var(--surface-elevated)", color: tab === o ? "#fff" : "var(--text-secondary)" }}>{o}</button>
+          <button key={o} className="pd-tap" onClick={() => setTab(o)} style={{ flexShrink: 0, height: 36, padding: "0 15px", borderRadius: 999, border: "1px solid var(--border-default)", cursor: "pointer", fontSize: 13.5, fontWeight: 600, background: tab === o ? "var(--accent-primary)" : "var(--surface-elevated)", color: tab === o ? "#fff" : "var(--text-secondary)" }}>{o}</button>
         ))}
       </div>
 
-      <ScrollArea padBottom={120} style={{ padding: "0 20px" }}>
+      {/* controls scroll, with generous bottom padding so the sticky bar + browser bar never cover them */}
+      <ScrollArea padBottom={"calc(150px + env(safe-area-inset-bottom, 0px))"} style={{ padding: "0 20px" }}>
         {tab === "Review" && (
           <div style={{ paddingTop: 8 }}>
             <div style={{ background: "var(--surface-elevated)", borderRadius: 16, overflow: "hidden" }}>
@@ -244,6 +252,7 @@ function CleanTakeScreen({ app }) {
               <DSc.Slider min={0} max={Math.max(1, Math.floor(dur / 2))} value={trimEnd} onChange={(e) => setTrimEnd(+e.target.value)} suffix="s" />
             </Field>
             <button className="pd-tap" onClick={() => setEditMap(true)} style={{ width: "100%", height: 46, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Review removed parts (Edit Map)</button>
+            <button className="pd-tap" onClick={() => { setPreset("Balanced"); setSpeed("Normal"); setTrimStart(0); setTrimEnd(0); setRestored({}); setStyle({ b: 100, c: 100, s: 100 }); }} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "var(--text-muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Reset Clean Take</button>
           </div>
         )}
 

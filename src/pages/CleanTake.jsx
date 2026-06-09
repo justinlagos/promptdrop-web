@@ -64,11 +64,15 @@ export default function CleanTake({ id, onBack }) {
   const filterCss = `brightness(${style.b}%) contrast(${style.c}%) saturate(${style.s}%)`;
   const allPauses = useMemo(() => ctPauseDecisions(silences, preset), [silences, preset]);
 
-  useEffect(() => { const v = vref.current; if (v) v.playbackRate = view === "clean" ? rate : 1; }, [rate, view, url]);
+  const applyRate = () => { const v = vref.current; if (v) { try { v.playbackRate = view === "clean" ? rate : 1; } catch (e) {} } };
+  useEffect(() => { applyRate(); }, [rate, view, url]);
   function onTime() {
     const v = vref.current; if (!v || view !== "clean") return;
-    const t = v.currentTime; for (const s of ctMerge(removed)) { if (t >= s.start - 0.02 && t < s.end - 0.05) { try { v.currentTime = s.end + 0.001; } catch (e) {} break; } }
+    const t = v.currentTime;
+    if (trimEnd > 0 && dur && t >= dur - trimEnd - 0.05) { try { v.pause(); } catch (e) {} }
+    for (const s of ctMerge(removed)) { if (t >= s.start - 0.02 && t < s.end - 0.05) { try { v.currentTime = s.end + 0.001; } catch (e) {} break; } }
   }
+  function onPlay() { applyRate(); const v = vref.current; if (v && view === "clean" && trimStart > 0 && v.currentTime < trimStart) { try { v.currentTime = trimStart + 0.001; } catch (e) {} } }
 
   async function save() {
     if (!take) return;
@@ -93,7 +97,7 @@ export default function CleanTake({ id, onBack }) {
         {/* left: preview */}
         <div>
           <div style={{ borderRadius: 16, overflow: "hidden", background: "#000", aspectRatio: "16/10", position: "relative" }}>
-            {url ? <video ref={vref} src={url} controls playsInline preload="metadata" onTimeUpdate={view === "clean" ? onTime : undefined} style={{ width: "100%", height: "100%", objectFit: "contain", background: "#000", filter: view === "clean" ? filterCss : "none" }} />
+            {url ? <video ref={vref} src={url} controls playsInline preload="metadata" onTimeUpdate={onTime} onPlay={onPlay} onLoadedMetadata={applyRate} onRateChange={applyRate} style={{ width: "100%", height: "100%", objectFit: "contain", background: "#000", filter: view === "clean" ? filterCss : "none", transition: "filter .12s ease" }} />
               : <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", padding: 24, textAlign: "center" }}>No video was captured for this recording.</div>}
           </div>
           <div style={{ display: "flex", background: "var(--surface-sunken)", borderRadius: 10, padding: 3, gap: 2, marginTop: 12, maxWidth: 320 }}>
