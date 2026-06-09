@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
+import ThemeToggle from "./ThemeToggle.jsx";
 
 const Glyph = () => (
   <svg className="brand__glyph" viewBox="0 0 512 512" aria-hidden="true">
@@ -23,7 +24,8 @@ export function TopNav() {
         <Link to="/pricing">Pricing</Link>
         <Link to="/download">Download</Link>
       </div>
-      <div className="nav__cta">
+      <div className="nav__cta" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span className="nav__theme"><ThemeToggle compact /></span>
         {isSignedIn ? (
           <Link className="nav__chip" to="/account"><span className="nav__avatar">{initials}</span>Account</Link>
         ) : (

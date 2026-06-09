@@ -29,6 +29,18 @@ export default function AuthModal() {
     closeAuth();
   }
 
+  async function google() {
+    setBusy(true); setMsg(null);
+    const r = await authService.signInWithGoogle();
+    setBusy(false);
+    if (!r.ok) setMsg({ type: "err", text: r.message || "Google sign-in is not available yet." });
+  }
+  async function forgot() {
+    if (!email) { setMsg({ type: "err", text: "Enter your email above, then tap reset." }); return; }
+    await authService.sendPasswordReset(email);
+    setMsg({ type: "ok", text: "Check your email for the reset link." });
+  }
+
   return (
     <div className="modal" onMouseDown={closeAuth}>
       <div className="modal__card" onMouseDown={(e) => e.stopPropagation()}>
@@ -44,11 +56,14 @@ export default function AuthModal() {
           <div className="note">Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable accounts.</div>
         ) : (
           <form onSubmit={submit} className="authform">
+            <button type="button" className="btn btn--secondary btn--lg" onClick={google} disabled={busy} style={{ width: "100%", marginBottom: 12 }}>Continue with Google</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px", color: "var(--text-muted)", fontSize: 12 }}><span style={{ flex: 1, height: 1, background: "var(--border-default)" }} />or<span style={{ flex: 1, height: 1, background: "var(--border-default)" }} /></div>
             {mode === "signup" && (
               <label>Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" autoComplete="name" /></label>
             )}
             <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" /></label>
             <label>Password<input type="password" required minLength={6} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="At least 6 characters" autoComplete={mode === "signin" ? "current-password" : "new-password"} /></label>
+            {mode === "signin" && <button type="button" className="link" onClick={forgot} style={{ alignSelf: "flex-end", fontSize: 12.5, background: "none", border: "none", cursor: "pointer" }}>Forgot password?</button>}
             {mode === "signup" && (
               <label style={{ flexDirection: "row", alignItems: "flex-start", gap: 9, fontSize: 12.5, color: "var(--text-secondary)", fontWeight: 400, lineHeight: 1.45 }}>
                 <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, flex: "none" }} />

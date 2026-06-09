@@ -69,6 +69,7 @@ function LiveSession({ cfg, onExit, onComplete }) {
   const [elapsed, setElapsed] = React.useState(0);
   const [expanded, setExpanded] = React.useState(false);
   const [camOk, setCamOk] = React.useState(false);
+  const [camErr, setCamErr] = React.useState(false);
   const recording = cfg.autoRec;
   const videoRef = React.useRef(null);
   const streamRef = React.useRef(null);
@@ -88,37 +89,60 @@ function LiveSession({ cfg, onExit, onComplete }) {
         if (!alive) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream; setCamOk(true);
         if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.muted = true; videoRef.current.play().catch(() => {}); }
-      } catch (e) { setCamOk(false); }
+      } catch (e) { setCamOk(false); setCamErr(true); }
     })();
     return () => { alive = false; try { streamRef.current && streamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {} };
   }, []);
 
+  function pickRecMime() {
+    const kinds = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+    if (!window.MediaRecorder) return null;
+    for (const m of kinds) { try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (e) {} }
+    return '';   // let the browser choose its default (Safari -> mp4)
+  }
   function startRec() {
     const stream = streamRef.current; if (!stream || !recording || !('MediaRecorder' in window) || recRef.current) return;
-    try {
-      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
-      chunksRef.current = []; const mr = new MediaRecorder(stream, { mimeType: mime });
-      mr.ondataavailable = e => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
-      mr.start(1000); recRef.current = mr; startedRef.current = Date.now();
-    } catch (e) {}
+    chunksRef.current = [];
+    let mr;
+    try { const mime = pickRecMime(); mr = (mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)); }
+    catch (e) { try { mr = new MediaRecorder(stream); } catch (e2) { return; } }
+    mr.ondataavailable = e => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
+    // Some mobile browsers only emit data on stop; a timeslice makes them flush as we go.
+    try { mr.start(1000); } catch (e) { try { mr.start(); } catch (e2) { return; } }
+    recRef.current = mr; startedRef.current = Date.now();
   }
   async function finishRec() {
     const mr = recRef.current; recRef.current = null;
-    if (!mr || savingRef.current) { onComplete({}); return; }
+    const stopStream = () => { try { streamRef.current && streamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {} };
+    if (savingRef.current) return;
     savingRef.current = true;
-    mr.onstop = async () => {
-      const dur = Date.now() - startedRef.current;
-      const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'video/webm' });
+    const save = async (blob) => {
+      const dur = Math.max(0, Date.now() - startedRef.current);
       const id = (crypto.randomUUID ? crypto.randomUUID() : 'tk' + Date.now());
-      try { await PDsvc.putTake({ id, createdAt: Date.now(), durationMs: dur, size: blob.size, source: 'camera', title: cfg.title, blob }); } catch (e) {}
-      try { streamRef.current && streamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {}
+      try { await PDsvc.putTake({ id, createdAt: Date.now(), durationMs: dur, size: blob ? blob.size : 0, type: blob ? (blob.type || '') : '', source: 'camera', title: cfg.title, blob: blob || null }); } catch (e) {}
+      stopStream();
       onComplete({ id });
     };
-    try { mr.stop(); } catch (e) { onComplete({}); }
+    if (!mr) { save(null); return; }
+    let done = false;
+    const finalize = () => { if (done) return; done = true; save(new Blob(chunksRef.current, { type: mr.mimeType || 'video/webm' })); };
+    mr.onstop = finalize;
+    try {
+      if (mr.state !== 'inactive') { try { mr.requestData(); } catch (e) {} mr.stop(); }
+      else finalize();
+    } catch (e) { finalize(); }
+    // Safety net, if onstop never fires on this device, save what we have.
+    setTimeout(finalize, 1500);
   }
 
-  React.useEffect(() => { if (phase !== 'countdown') return; if (count === 0) { setPhase('prompting'); return; } const t = setTimeout(() => setCount(c => c - 1), 850); return () => clearTimeout(t); }, [phase, count]);
-  React.useEffect(() => { if (phase === 'prompting') startRec(); }, [phase]);
+  // Hold the countdown at "Go" until the camera is actually live, so the recorder always has a stream to capture.
+  React.useEffect(() => {
+    if (phase !== 'countdown') return;
+    if (count === 0) { if (!recording || camOk || camErr) setPhase('prompting'); return; }
+    const t = setTimeout(() => setCount(c => c - 1), 850); return () => clearTimeout(t);
+  }, [phase, count, camOk, camErr, recording]);
+  // Start recording as soon as we are prompting AND the camera is ready (whichever happens last).
+  React.useEffect(() => { if (phase === 'prompting' && camOk) startRec(); }, [phase, camOk]);
   React.useEffect(() => { if (phase !== 'prompting') return; const t = setInterval(() => setElapsed(e => e + 1), 1000); return () => clearInterval(t); }, [phase]);
   React.useEffect(() => {
     if (phase !== 'prompting' || cfg.follow) return;
@@ -203,11 +227,23 @@ function LiveSession({ cfg, onExit, onComplete }) {
 function TakeReviewScreen({ app }) {
   const pd = useData();
   const [take, setTake] = React.useState(null);
+  const [loaded, setLoaded] = React.useState(false);
   const [url, setUrl] = React.useState(null);
   const [playing, setPlaying] = React.useState(false);
   const vref = React.useRef(null);
-  React.useEffect(() => { let live = true; (async () => { const t = await pd.svc.getTake(app.params.id); if (!live) return; setTake(t); if (t && t.blob) setUrl(URL.createObjectURL(t.blob)); })(); return () => { live = false; if (url) URL.revokeObjectURL(url); }; }, [app.params.id]);
+  const urlRef = React.useRef(null);
+  React.useEffect(() => {
+    let live = true;
+    (async () => {
+      const t = await pd.svc.getTake(app.params.id);
+      if (!live) return;
+      setTake(t || null); setLoaded(true);
+      if (t && t.blob && t.blob.size > 0) { const u = URL.createObjectURL(t.blob); urlRef.current = u; setUrl(u); }
+    })();
+    return () => { live = false; if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; } };
+  }, [app.params.id]);
   const fmtSize = (b) => b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' KB';
+  const hasVideo = !!url;
 
   const insights = take ? [
     { icon: 'clock', label: 'Duration', value: pd.svc.clock(take.durationMs) },
@@ -215,21 +251,26 @@ function TakeReviewScreen({ app }) {
     { icon: 'download', label: 'Size', value: fmtSize(take.size || 0) },
   ] : [];
 
-  function toggle() { const v = vref.current; if (!v) return; if (v.paused) { v.play(); setPlaying(true); } else { v.pause(); setPlaying(false); } }
-  function download() { if (!url) return; const a = document.createElement('a'); a.href = url; a.download = 'promptdrop-take.webm'; a.click(); }
+  function toggle() { const v = vref.current; if (!v) return; if (v.paused) { v.play().then(() => setPlaying(true)).catch(() => {}); } else { v.pause(); setPlaying(false); } }
+  function download() { if (!url) return; const ext = (take && take.type && take.type.indexOf('mp4') >= 0) ? 'mp4' : 'webm'; const a = document.createElement('a'); a.href = url; a.download = 'promptdrop-take.' + ext; a.click(); }
 
   return (
     <Screen>
-      <NavHeader onBack={app.back} title="Take" action={<button className="pd-tap" style={iconBtn} onClick={download}><Icon name="download" size={19} color="var(--text-secondary)" /></button>} />
+      <NavHeader onBack={app.back} title="Take" action={hasVideo ? <button className="pd-tap" style={iconBtn} onClick={download}><Icon name="download" size={19} color="var(--text-secondary)" /></button> : null} />
       <ScrollArea padBottom={120}>
         <div style={{ margin: '6px 16px 0', borderRadius: 22, overflow: 'hidden', position: 'relative', aspectRatio: '9 / 13', maxHeight: 380, background: '#000' }}>
-          {url
-            ? <video ref={vref} src={url} playsInline onEnded={() => setPlaying(false)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : <CameraView dim={0.18} />}
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-            {!playing && <button className="pd-tap" onClick={toggle} style={{ width: 64, height: 64, borderRadius: 999, border: 'none', background: 'rgba(255,255,255,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', pointerEvents: 'auto' }}><Icon name="play" size={26} color="#000" /></button>}
-          </div>
-          {playing && <div onClick={toggle} style={{ position: 'absolute', inset: 0 }} />}
+          {hasVideo ? (
+            <>
+              <video ref={vref} src={url} playsInline controls preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#000' }} />
+              {!playing && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}><button className="pd-tap" onClick={toggle} style={{ width: 64, height: 64, borderRadius: 999, border: 'none', background: 'rgba(255,255,255,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', pointerEvents: 'auto' }}><Icon name="play" size={26} color="#000" /></button></div>}
+            </>
+          ) : (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 26, textAlign: 'center', gap: 8 }}>
+              <PromptCharacter state={loaded ? 'idle' : 'processing'} size={64} />
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{loaded ? 'No video was captured' : 'Loading your take…'}</div>
+              {loaded && <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.45, maxWidth: 260 }}>This browser may not support in-app video recording. Allow camera and microphone access, or record from the desktop app.</div>}
+            </div>
+          )}
         </div>
         <div style={{ padding: '16px 20px 0' }}>
           <Eyebrow>{take ? pd.svc.rel(take.createdAt) : ''}</Eyebrow>

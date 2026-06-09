@@ -12,7 +12,20 @@ createRoot(document.getElementById("root")).render(
   </React.StrictMode>
 );
 
-// PWA: register the service worker (installable, basic offline shell)
+// PWA: register the service worker (installable, basic offline shell).
+// When a new service worker takes control after a deploy, reload once so the
+// freshly deployed code is used immediately (no stale cached bundle).
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloaded) return; reloaded = true; window.location.reload();
+  });
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").then((reg) => {
+      reg.addEventListener("updatefound", () => {
+        const sw = reg.installing;
+        if (sw) sw.addEventListener("statechange", () => { if (sw.state === "installed" && navigator.serviceWorker.controller) sw.postMessage("skipWaiting"); });
+      });
+    }).catch(() => {});
+  });
 }

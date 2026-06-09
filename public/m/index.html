@@ -41,21 +41,33 @@
 </style>
 </head>
 <body>
-  <div id="app-root"></div>
+  <div id="app-root">
+    <div id="pd-boot" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#7E8190;font:14px system-ui">Loading PromptDrop…</div>
+  </div>
+  <script>
+    // If the app hasn't mounted shortly after load, the scripts failed (often a blocked CDN). Say so, don't sit black.
+    window.addEventListener('error', function (e) {
+      var r = document.getElementById('app-root');
+      if (r && !r.getAttribute('data-mounted')) {
+        r.innerHTML = '<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;color:#cfd2da;font:14px system-ui;text-align:center">Could not load the app.<br><small style="opacity:.6">' + ((e && e.message) || 'A script failed to load') + '</small></div>';
+      }
+    }, true);
+    setTimeout(function () {
+      var r = document.getElementById('app-root');
+      if (r && !r.getAttribute('data-mounted')) {
+        r.innerHTML = '<div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;color:#cfd2da;font:14px system-ui;text-align:center">Still loading…<br><small style="opacity:.6;margin:6px 0 14px">If this stays, your connection may be blocking a resource.</small><button onclick="location.reload()" style="padding:8px 16px;border-radius:10px;border:1px solid #333;background:#1a1a1f;color:#fff;font-size:13px">Reload</button></div>';
+      }
+    }, 6000);
+  </script>
 
-  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
+  <!-- Vendored locally so a blocked or slow CDN can never blank the app -->
+  <script src="_vendor/react.min.js"></script>
+  <script src="_vendor/react-dom.min.js"></script>
+  <script src="_vendor/supabase.min.js"></script>
 
   <script src="_ds/promptdrop-design-system-82c6c3fc-0774-4c89-8b3b-98e1d2bc48e9/_ds_bundle.js"></script>
 
-  <script type="text/babel" src="frames/ios-frame.jsx"></script>
-  <script type="text/babel" src="app/data.jsx"></script>
-  <script type="text/babel" src="app/screens-library.jsx"></script>
-  <script type="text/babel" src="app/screens-record.jsx"></script>
-  <script type="text/babel" src="app/screens-meetings.jsx"></script>
-  <script type="text/babel" src="app/screens-account.jsx"></script>
-  <script type="text/babel" src="app/app.jsx"></script>
+  <!-- Precompiled app (ios-frame -> data -> screens -> app), no runtime Babel -->
+  <script src="app.bundle.js"></script>
 </body>
 </html>

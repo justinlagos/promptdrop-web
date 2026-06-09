@@ -23,6 +23,24 @@
   --tp-current:var(--ink-50);--tp-adjacent:rgba(244,244,245,.42);--tp-far:rgba(244,244,245,.16);
   --nav-h:64px;
 }
+/* ===== Light theme: remap semantic tokens. Dark stays the premium default. ===== */
+[data-theme="light"]{
+  --bg-primary:#F6F6F8;--bg-secondary:#FFFFFF;
+  --surface-elevated:#FFFFFF;--surface-raised:#FFFFFF;--surface-sunken:#EDEDF1;
+  --text-primary:#15151A;--text-secondary:#52525B;--text-muted:#7A7A84;
+  --accent-primary:var(--blue-600);--success:#1FA971;--recording:var(--rec-500);
+  --divider:#E3E3E8;--border-subtle:rgba(0,0,0,.07);--border-default:#E3E3E8;--border-strong:#CFCFD6;
+  --shadow-surface:0 1px 3px rgba(0,0,0,.10),0 1px 0 rgba(0,0,0,.02) inset;
+  --shadow-elevated:0 12px 32px -10px rgba(0,0,0,.18),0 2px 8px rgba(0,0,0,.08),0 0 0 1px rgba(0,0,0,.05);
+  --glow-accent:0 0 0 rgba(0,0,0,0);
+  --tp-current:#15151A;--tp-adjacent:rgba(21,21,26,.42);--tp-far:rgba(21,21,26,.16);
+}
+[data-theme="light"] body{background:var(--bg-primary)}
+[data-theme="light"] .nav{background:rgba(255,255,255,.80)}
+[data-theme="light"] .mbnav{background:rgba(255,255,255,.92)}
+[data-theme="light"] .badge{background:#EDEDF1}
+[data-theme="light"] .btn--primary,[data-theme="light"] .nav__avatar{color:#fff}
+
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{font-family:var(--font-sans);background:var(--bg-primary);color:var(--text-primary);-webkit-font-smoothing:antialiased;line-height:1.5;overflow-x:hidden}

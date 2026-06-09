@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 
 const Mark = () => (
@@ -15,7 +15,8 @@ const Mark = () => (
 export default function Welcome() {
   const { isSignedIn, openAuth } = useAuth() || {};
   const nav = useNavigate();
-  useEffect(() => { if (isSignedIn) nav("/app", { replace: true }); }, [isSignedIn, nav]);
+  const [params] = useSearchParams();
+  useEffect(() => { if (isSignedIn) { const next = params.get("next"); nav(next && next.startsWith("/") ? next : "/app", { replace: true }); } }, [isSignedIn, nav, params]);
 
   return (
     <main className="welcome">

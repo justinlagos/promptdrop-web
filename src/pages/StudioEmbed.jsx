@@ -8,7 +8,7 @@ export default function StudioEmbed() {
       title="PromptDrop Studio"
       src="/studio/index.html"
       allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write"
-      style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh", border: "none", background: "#07080b" }}
+      style={{ width: "100%", height: "100%", border: "none", background: "#07080b", display: "block" }}
     />
   );
 }

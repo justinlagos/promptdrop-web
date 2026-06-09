@@ -19,6 +19,16 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 </head>
 <body>
+  <script>
+    // Apply the saved theme before paint so there is no flash of the wrong mode.
+    (function () {
+      try {
+        var p = localStorage.getItem("pd.theme") || "system";
+        var dark = p === "dark" || (p === "system" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      } catch (e) {}
+    })();
+  </script>
   <div id="root"></div>
   <script type="module" src="/src/main.jsx"></script>
 </body>

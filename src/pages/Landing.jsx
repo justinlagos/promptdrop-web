@@ -169,8 +169,8 @@ function AskCard() {
 }
 
 const FAQ = [
-  ["Is PromptDrop free?", "Yes, the core web teleprompter is free, with no signup. You only pay when you need AI, voice-follow, cloud sync, the desktop overlay or meeting features."],
-  ["Do I need to sign up?", "No. Free runs in guest mode with your data stored locally on your device. Accounts and cloud sync arrive with Creator Pro and up."],
+  ["Is there a free trial?", "Yes. Create an account and you get a 7-day free trial with full access. After the trial, choose Creator Pro or Studio Pro to keep your paid features. Your scripts and takes stay saved either way."],
+  ["Do I need to sign up?", "Yes. PromptDrop is account-based so your scripts, takes and settings sync securely across your devices. Signing up takes a few seconds and starts your 7-day trial."],
   ["Does it work on mobile?", "Yes, write, paste, prompt, record a selfie take and review on your phone, with large touch controls."],
   ["Does it work with Zoom or Google Meet?", "The Studio Pro desktop overlay floats above Zoom, Meet, Teams, Loom, Riverside, Keynote and PowerPoint."],
   ["Can the prompt stay private during screen sharing?", "Private Prompt Mode attempts to keep the overlay out of supported screen shares and captures. It can't be guaranteed on every app, OS or capture method."],

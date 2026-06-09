@@ -2,7 +2,7 @@
 
 const FULLSCREEN = { script: 1, recordSetup: 1, takeReview: 1, meeting: 1, upgrade: 1 };
 const ROOTS = { library: LibraryScreen, meetings: MeetingsScreen, account: AccountScreen };
-const PUSHED = { script: ScriptScreen, recordSetup: RecordSetupScreen, takeReview: TakeReviewScreen, meeting: MeetingDetailScreen, upgrade: UpgradeScreen };
+const PUSHED = { script: ScriptScreen, recordSetup: RecordSetupScreen, takeReview: CleanTakeScreen, meeting: MeetingDetailScreen, upgrade: UpgradeScreen };
 
 const TABS = [
   { id: 'library', label: 'Library', icon: 'library' },
@@ -142,7 +142,27 @@ function PromptDropApp() {
 
 window.PromptDropApp = PromptDropApp;
 
+// Never fail to a silent black screen, surface the reason instead.
+class PDErrorBoundary extends React.Component {
+  constructor(p) { super(p); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch() {}
+  render() {
+    if (this.state.err) return (
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'var(--bg-primary, #0a0a0b)', color: '#cfd2da', font: '14px system-ui', textAlign: 'center' }}>
+        <div>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Something went wrong</div>
+          <div style={{ opacity: 0.6, fontSize: 12 }}>{String((this.state.err && this.state.err.message) || this.state.err)}</div>
+          <div style={{ marginTop: 14 }}><button onClick={() => location.reload()} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #333', background: '#1a1a1f', color: '#fff', fontSize: 13 }}>Reload</button></div>
+        </div>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 const _mount = document.getElementById('app-root');
 if (_mount) {
-  ReactDOM.createRoot(_mount).render(<DataProvider><PromptDropApp /></DataProvider>);
+  _mount.setAttribute('data-mounted', '1');
+  ReactDOM.createRoot(_mount).render(<DataProvider><PDErrorBoundary><PromptDropApp /></PDErrorBoundary></DataProvider>);
 }

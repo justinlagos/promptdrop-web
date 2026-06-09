@@ -3,6 +3,29 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { billingService, planService, desktopDownloadService, featureGateService } from "../services/index.js";
 import { PLANS } from "../services/planService.js";
+import ThemeToggle from "../components/ThemeToggle.jsx";
+import { useWorkspace } from "../context/WorkspaceContext.jsx";
+
+// 7-day trial status, read from the server-authoritative entitlement.
+function TrialBanner() {
+  const ws = useWorkspace() || {};
+  const e = ws.entitlements;
+  if (!e || e.status !== "trialing" || !e.current_period_end) return null;
+  const end = new Date(e.current_period_end).getTime();
+  const days = Math.ceil((end - Date.now()) / 86400000);
+  const expired = days <= 0;
+  return (
+    <div className="card" style={{ padding: 16, marginBottom: 16, borderColor: expired ? "var(--recording)" : "var(--accent-primary)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>{expired ? "Your free trial has ended" : days === 1 ? "Trial ends today" : `${days} days left in your trial`}</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>{expired ? "Choose a plan to keep recording. Your scripts and takes are safe." : "Full access during your trial. Pick a plan any time."}</div>
+        </div>
+        <Link className="btn btn--primary" to="/pricing">Choose a plan</Link>
+      </div>
+    </div>
+  );
+}
 
 function MacAppCard({ plan }) {
   const canDesktop = featureGateService.can("desktopOverlay");   // Studio Pro
@@ -116,7 +139,19 @@ export default function Account() {
   return (
     <main className="wrap" style={{ padding: "56px 24px", maxWidth: 620 }}>
       <div className="eyebrow" style={{ marginBottom: 8 }}>Account</div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-.03em", marginBottom: 22 }}>{user.email}</h1>
+      <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-.03em", marginBottom: 14 }}>{user.email}</h1>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+        <Link className="btn btn--ghost" to="/account/security">Security</Link>
+        <Link className="btn btn--ghost" to="/app/workspace">Workspace</Link>
+      </div>
+
+      <TrialBanner />
+
+      <div className="card" style={{ padding: 16, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>Appearance</span>
+        <ThemeToggle />
+      </div>
 
       {note && <div className={`note note--${note.type === "err" ? "err" : note.type === "warn" ? "warn" : "ok"}`} style={{ marginBottom: 18 }}>{note.text}</div>}
 

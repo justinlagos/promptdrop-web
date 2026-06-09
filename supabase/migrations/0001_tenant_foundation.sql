@@ -1,0 +1,25 @@
+-- PromptDrop multi-tenant foundation (applied to project wbqteajanwvfcwvjqozt).
+-- Additive and non-breaking: existing per-user scripts/subscriptions keep working
+-- while workspace tenancy + RLS is layered on top. See AUTH_SECURITY_AUDIT.md.
+--
+-- This file consolidates four applied migrations:
+--   1) tenant_core_workspaces_rls
+--   2) tenant_domain_tables_rls
+--   3) signup_provisioning_and_backfill
+--   4) entitlement_sync_from_subscription  (+ harden_functions_grants)
+--
+-- Tables: workspaces, workspace_members, billing_entitlements, audit_logs,
+--         security_events, takes, transcripts, meetings, meeting_questions;
+--         profiles + scripts extended with tenant columns.
+-- Helpers: uid_safe, is_workspace_member, has_workspace_role, is_workspace_owner,
+--          can_view/edit/present/admin_workspace, can_manage_billing,
+--          can_access_entitlement, plan_rank, ensure_personal_workspace.
+-- RLS: enabled on every tenant table with role-based policies.
+-- Provisioning: handle_new_user() creates profile + personal workspace + owner
+--          membership + free entitlement on signup; ensure_personal_workspace()
+--          repairs missing context; subscriptions -> billing_entitlements sync trigger.
+--
+-- The authoritative, executable SQL is the migration history in Supabase
+-- (supabase migration list). This file is the human-readable record. To recreate
+-- on a fresh project, run the four migrations in order via the Supabase MCP /
+-- `supabase db push`. Full statements are reproduced in AUTH_SECURITY_AUDIT.md.

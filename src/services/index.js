@@ -52,6 +52,68 @@ export const authService = {
     if (!user) return "Guest";
     return (user.user_metadata && user.user_metadata.display_name) || (user.email ? String(user.email).split("@")[0] : "Account");
   },
+
+  // ---- OAuth (Level 3). Honest if the provider is not configured in Supabase. ----
+  async signInWithGoogle() {
+    if (!supabase) return { ok: false, reason: "not-connected", message: "Cloud accounts are not connected yet." };
+    const redirectTo = `${window.location.origin}/app`;
+    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
+    if (error) return { ok: false, reason: "error", message: "Google sign-in is not available yet." };
+    return { ok: true };
+  },
+
+  // ---- Password management ----
+  async sendPasswordReset(email) {
+    if (!supabase) return { ok: false, reason: "not-connected", message: "Cloud accounts are not connected yet." };
+    await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/reset-password` });
+    // Always succeed-looking to avoid account enumeration.
+    return { ok: true };
+  },
+  async updatePassword(newPassword) {
+    if (!supabase) return { ok: false, reason: "not-connected", message: "Cloud accounts are not connected yet." };
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { ok: false, reason: "error", message: error.message };
+    return { ok: true };
+  },
+  // Re-authenticate by re-checking the password, for sensitive actions.
+  async reauthenticate(password) {
+    if (!supabase) return { ok: false, reason: "not-connected" };
+    const { data: u } = await supabase.auth.getUser();
+    const email = u?.user?.email;
+    if (!email) return { ok: false, reason: "no-user" };
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return error ? { ok: false, reason: "bad-password", message: "That password did not match." } : { ok: true };
+  },
+
+  // ---- MFA / TOTP (Level 2). Real Supabase calls, no faking. ----
+  async getAAL() {
+    if (!supabase) return null;
+    try { const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel(); return data || null; } catch { return null; }
+  },
+  async listFactors() {
+    if (!supabase) return { totp: [] };
+    try { const { data } = await supabase.auth.mfa.listFactors(); return data || { totp: [] }; } catch { return { totp: [] }; }
+  },
+  async enrollTOTP() {
+    if (!supabase) return { ok: false, reason: "not-connected", message: "Cloud accounts are not connected yet." };
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: `PromptDrop ${Date.now()}` });
+    if (error) return { ok: false, reason: "error", message: error.message };
+    return { ok: true, factorId: data.id, qr: data.totp?.qr_code, secret: data.totp?.secret, uri: data.totp?.uri };
+  },
+  async verifyTOTP(factorId, code) {
+    if (!supabase) return { ok: false, reason: "not-connected" };
+    const ch = await supabase.auth.mfa.challenge({ factorId });
+    if (ch.error) return { ok: false, reason: "error", message: ch.error.message };
+    const { error } = await supabase.auth.mfa.verify({ factorId, challengeId: ch.data.id, code });
+    if (error) return { ok: false, reason: "error", message: "That code did not verify. Try again." };
+    return { ok: true };
+  },
+  async disableTOTP(factorId) {
+    if (!supabase) return { ok: false, reason: "not-connected" };
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) return { ok: false, reason: "error", message: error.message };
+    return { ok: true };
+  },
 };
 
 // ---- planService (resolves the real plan from the subscriptions table) ----
