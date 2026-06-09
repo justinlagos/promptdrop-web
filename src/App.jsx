@@ -20,9 +20,29 @@ import AccountSecurity from "./pages/AccountSecurity.jsx";
 import WorkspacePage from "./pages/Workspace.jsx";
 import { useIsMobile } from "./mobile/useIsMobile.js";
 
-// Phones get the purpose-built native mobile app (vendored at /m); large screens get the studio.
+// The cloud-backed app (vendored at /m). On phones it is full-bleed; on desktop it is
+// presented in its own focused, branded frame so it has a deliberate desktop shape
+// rather than a stretched phone.
 function MobileApp() {
-  return <iframe title="PromptDrop" src="/m/index.html" allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write" style={{ position: "fixed", inset: 0, width: "100vw", height: "100dvh", border: "none", background: "#0a0a0b" }} />;
+  const mobile = useIsMobile();
+  const frame = (
+    <iframe title="PromptDrop" src="/m/index.html" allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write"
+      style={mobile
+        ? { position: "fixed", inset: 0, width: "100vw", height: "100dvh", border: "none", background: "#0a0a0b" }
+        : { width: "100%", height: "100%", border: "none", background: "#0a0a0b", display: "block" }} />
+  );
+  if (mobile) return frame;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "radial-gradient(1200px 700px at 50% -10%, rgba(76,141,255,0.14), transparent 60%), var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+      <div style={{ position: "absolute", top: 22, left: 30, display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-.02em", color: "var(--text-primary)" }}>prompt<span style={{ color: "var(--accent-primary)" }}>drop</span></span>
+      </div>
+      <div style={{ position: "absolute", top: 26, right: 30, fontSize: 12.5, color: "var(--text-muted)" }}>Synced across your devices</div>
+      <div style={{ width: "min(460px, 94vw)", height: "min(900px, 92vh)", borderRadius: 30, overflow: "hidden", background: "#0a0a0b", boxShadow: "0 50px 130px -30px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06)" }}>
+        {frame}
+      </div>
+    </div>
+  );
 }
 function DesktopApp() {
   const [view, setView] = React.useState("prompter");   // prompter | meetings

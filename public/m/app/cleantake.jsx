@@ -142,6 +142,7 @@ function CleanTakeScreen({ app }) {
   const [restored, setRestored] = React.useState({});       // pause id -> true means user kept it
   const [style, setStyle] = React.useState({ b: 100, c: 100, s: 100 });
   const [editMap, setEditMap] = React.useState(false);
+  const [moreOpen, setMoreOpen] = React.useState(false);
   const [transcribing, setTranscribing] = React.useState(false);
   const [exporting, setExporting] = React.useState(null);
   const [prog, setProg] = React.useState(0);
@@ -206,6 +207,8 @@ function CleanTakeScreen({ app }) {
     else app.toast(tr.msg || "Transcription is not switched on yet");
   }
   function download() { if (!url) return; const ext = take && take.type && take.type.indexOf("mp4") >= 0 ? "mp4" : "webm"; const a = document.createElement("a"); a.href = url; a.download = "promptdrop-original." + ext; a.click(); }
+  function setStartFromPlayhead() { const t = Math.floor((vref.current && vref.current.currentTime) || 0); setTrimStart(Math.max(0, Math.min(t, Math.floor(dur / 2)))); }
+  function setEndFromPlayhead() { const t = (vref.current && vref.current.currentTime) || 0; setTrimEnd(Math.max(0, Math.min(Math.floor(dur - t), Math.floor(dur / 2)))); }
   async function exportClean(withCaptions) {
     if (!take || !take.blob || exporting) return;
     setExportErr(""); setExporting(withCaptions ? "captioned" : "clean"); setProg(0);
@@ -268,15 +271,17 @@ function CleanTakeScreen({ app }) {
         )}
       </div>
 
-      {/* tabs (sticky under the video) */}
-      <div style={{ flexShrink: 0, display: "flex", gap: 6, overflowX: "auto", padding: "12px 14px 8px" }} className="pd-hscroll">
-        {TABS.map((o) => (
-          <button key={o} className="pd-tap" onClick={() => setTab(o)} style={{ flexShrink: 0, height: 36, padding: "0 15px", borderRadius: 999, border: "1px solid var(--border-default)", cursor: "pointer", fontSize: 13.5, fontWeight: 600, background: tab === o ? "var(--accent-primary)" : "var(--surface-elevated)", color: tab === o ? "#fff" : "var(--text-secondary)" }}>{o}</button>
-        ))}
+      {/* tabs: a real segmented bar in a sunken track, obvious active state */}
+      <div style={{ flexShrink: 0, padding: "12px 14px 4px" }}>
+        <div className="pd-hscroll" style={{ display: "flex", gap: 2, background: "var(--surface-sunken)", border: "1px solid var(--border-default)", borderRadius: 12, padding: 3, overflowX: "auto" }}>
+          {TABS.map((o) => (
+            <button key={o} className="pd-tap" onClick={() => setTab(o)} style={{ flex: "1 0 auto", minWidth: 72, height: 38, borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)", background: tab === o ? "var(--surface-raised)" : "transparent", color: tab === o ? "var(--text-primary)" : "var(--text-muted)", boxShadow: tab === o ? "var(--shadow-surface)" : "none" }}>{o}</button>
+          ))}
+        </div>
       </div>
 
-      {/* controls scroll, with generous bottom padding so the sticky bar + browser bar never cover them */}
-      <ScrollArea padBottom={"calc(150px + env(safe-area-inset-bottom, 0px))"} style={{ padding: "0 20px" }}>
+      {/* controls scroll, generous bottom padding so the sticky bar + browser bar never cover them */}
+      <ScrollArea padBottom={"calc(132px + env(safe-area-inset-bottom, 0px))"} style={{ padding: "10px 16px 0" }}>
         {tab === "Review" && (
           <div style={{ paddingTop: 8 }}>
             <div style={{ background: "var(--surface-elevated)", borderRadius: 16, overflow: "hidden" }}>
@@ -293,24 +298,26 @@ function CleanTakeScreen({ app }) {
         )}
 
         {tab === "Clean" && (
-          <div style={{ paddingTop: 10, display: "flex", flexDirection: "column", gap: 18 }}>
-            <Field label="Clean pauses" hint={silences ? "Trims dead air and long gaps." : "Pause detection unavailable for this recording."}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <CtCard title="Clean pauses" hint={silences ? "Trims dead air and long gaps, detected on this device." : "Automatic pause detection is not available for this recording."}>
               <DSc.SegmentedControl options={["Off", "Light", "Balanced", "Tight"]} value={preset} onChange={setPreset} />
-            </Field>
-            <Field label="Remove filler words" hint="Needs transcription. Available with Phase 2 once your account has it switched on.">
-              <span style={{ fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface-sunken)", padding: "6px 10px", borderRadius: 8 }}>Review first (pending transcription)</span>
-            </Field>
-            <Field label="Speed">
+            </CtCard>
+            <CtCard title="Speed" hint={`Playing at ${rate.toFixed(2)}x`}>
               <DSc.SegmentedControl options={["Normal", "Slightly faster", "Social pace"]} value={speed} onChange={setSpeed} />
-            </Field>
-            <Field label="Trim start" hint={ctClock(trimStart) + " removed"}>
-              <DSc.Slider min={0} max={Math.max(1, Math.floor(dur / 2))} value={trimStart} onChange={(e) => setTrimStart(+e.target.value)} suffix="s" />
-            </Field>
-            <Field label="Trim end" hint={ctClock(trimEnd) + " removed"}>
-              <DSc.Slider min={0} max={Math.max(1, Math.floor(dur / 2))} value={trimEnd} onChange={(e) => setTrimEnd(+e.target.value)} suffix="s" />
-            </Field>
-            <button className="pd-tap" onClick={() => setEditMap(true)} style={{ width: "100%", height: 46, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Review removed parts (Edit Map)</button>
-            <button className="pd-tap" onClick={() => { setPreset("Balanced"); setSpeed("Normal"); setTrimStart(0); setTrimEnd(0); setRestored({}); setStyle({ b: 100, c: 100, s: 100 }); }} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "var(--text-muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Reset Clean Take</button>
+            </CtCard>
+            <CtCard title="Trim" hint={(trimStart || trimEnd) ? `${ctClock(trimStart)} off the start · ${ctClock(trimEnd)} off the end` : "Cut the start or the end"}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                <button className="pd-tap" onClick={setStartFromPlayhead} style={ctMiniBtn}>Set start to playhead</button>
+                <button className="pd-tap" onClick={setEndFromPlayhead} style={ctMiniBtn}>Set end to playhead</button>
+              </div>
+              <DSc.Slider label="Start" min={0} max={Math.max(1, Math.floor(dur / 2))} value={trimStart} onChange={(e) => setTrimStart(+e.target.value)} suffix="s" />
+              <div style={{ height: 10 }} />
+              <DSc.Slider label="End" min={0} max={Math.max(1, Math.floor(dur / 2))} value={trimEnd} onChange={(e) => setTrimEnd(+e.target.value)} suffix="s" />
+            </CtCard>
+            <CtCard title="Remove filler words" hint="Needs transcription.">
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface-sunken)", padding: "9px 12px", borderRadius: 10 }}>Available once transcription is switched on for your account.</div>
+            </CtCard>
+            <button className="pd-tap" onClick={() => setEditMap(true)} style={{ width: "100%", height: 48, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 14.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><Icon name="redo" size={16} color="var(--text-secondary)" />Review removed sections</button>
           </div>
         )}
 
@@ -362,14 +369,55 @@ function CleanTakeScreen({ app }) {
         )}
       </ScrollArea>
 
-      {/* sticky save / delete */}
-      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "12px 20px calc(12px + env(safe-area-inset-bottom, 22px))", background: "linear-gradient(transparent, var(--bg-primary) 28%)", display: "flex", gap: 10 }}>
-        <DSc.Button variant="secondary" size="lg" onClick={del} iconLeft={<Icon name="trash" size={17} color="var(--text-primary)" />}>Delete</DSc.Button>
+      {/* sticky action: one primary Save; destructive + secondary actions live behind More */}
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "10px 16px calc(10px + env(safe-area-inset-bottom, 22px))", background: "linear-gradient(transparent, var(--bg-primary) 24%)", display: "flex", gap: 10, alignItems: "center" }}>
+        <button className="pd-tap" onClick={() => setMoreOpen(true)} aria-label="More actions" style={{ width: 52, height: 52, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 24, lineHeight: 1, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", paddingBottom: 8 }}>...</button>
         <DSc.Button variant="primary" size="lg" fullWidth onClick={save} iconLeft={<Icon name="check" size={18} color="#fff" />}>Save Clean Take</DSc.Button>
       </div>
 
       {editMap && <EditMapSheet dur={dur} removed={removed} restored={restored} onToggle={(id) => setRestored((r) => ({ ...r, [id]: !r[id] }))} pauses={ctPauseDecisions(silences, preset)} onClose={() => setEditMap(false)} />}
+      {moreOpen && <CtMoreSheet
+        onClose={() => setMoreOpen(false)}
+        onReset={() => { setPreset("Balanced"); setSpeed("Normal"); setTrimStart(0); setTrimEnd(0); setRestored({}); setStyle({ b: 100, c: 100, s: 100 }); setMoreOpen(false); app.toast("Clean Take reset"); }}
+        onDownload={url ? () => { download(); setMoreOpen(false); } : null}
+        onDelete={async () => { setMoreOpen(false); await del(); }}
+      />}
     </Screen>
+  );
+}
+
+// A grouped control card: title + helper text + the control itself.
+function CtCard({ title, hint, children }) {
+  return (
+    <div style={{ background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 16, padding: 16 }}>
+      <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--text-primary)" }}>{title}</div>
+      {hint && <div style={{ marginTop: 2, marginBottom: 12, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 }}>{hint}</div>}
+      {!hint && <div style={{ height: 12 }} />}
+      {children}
+    </div>
+  );
+}
+const ctMiniBtn = { flex: 1, height: 40, borderRadius: 11, border: "1px solid var(--border-default)", background: "var(--surface-sunken)", color: "var(--text-primary)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-sans)" };
+
+// Bottom sheet for secondary + destructive actions, so Delete is not glued next to Save.
+function CtMoreSheet({ onClose, onReset, onDownload, onDelete }) {
+  const row = (label, onClick, danger) => (
+    <button className="pd-tap" onClick={onClick} style={{ width: "100%", textAlign: "left", height: 54, padding: "0 16px", borderRadius: 14, border: "none", background: "var(--surface-elevated)", color: danger ? "var(--recording)" : "var(--text-primary)", fontSize: 15.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+      <Icon name={danger ? "trash" : label === "Reset Clean Take" ? "redo" : "download"} size={18} color={danger ? "var(--recording)" : "var(--text-secondary)"} />{label}
+    </button>
+  );
+  return (
+    <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 55, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-end" }}>
+      <div onClick={(e) => e.stopPropagation()} className="pd-push" style={{ width: "100%", background: "var(--bg-secondary)", borderTopLeftRadius: 22, borderTopRightRadius: 22, border: "1px solid var(--border-default)", borderBottom: "none", padding: "14px 16px calc(18px + env(safe-area-inset-bottom, 22px))" }}>
+        <div style={{ width: 40, height: 5, borderRadius: 9, background: "var(--ink-600)", margin: "0 auto 16px" }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {onDownload && row("Download original", onDownload)}
+          {row("Reset Clean Take", onReset)}
+          {row("Delete take", onDelete, true)}
+        </div>
+        <button className="pd-tap" onClick={onClose} style={{ marginTop: 14, width: "100%", height: 50, borderRadius: 14, border: "1px solid var(--border-default)", background: "transparent", color: "var(--text-secondary)", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+      </div>
+    </div>
   );
 }
 
