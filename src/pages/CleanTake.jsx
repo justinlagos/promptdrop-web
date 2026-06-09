@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { recordingDB } from "../services/recordingDB.js";
 import { ctMerge, ctKept, ctClock, ctDetectSilences, ctPauseDecisions, ctSRT, ctVTT, ctDownloadText } from "../services/cleanTake.js";
+import { renderCleanVideo, renderAudioWav, downloadBlob } from "../services/cleanExport.js";
 
 const SEG = (opts, val, on) => (
   <div style={{ display: "inline-flex", padding: 3, gap: 2, background: "var(--surface-sunken)", border: "1px solid var(--border-default)", borderRadius: 10, flexWrap: "wrap" }}>
@@ -82,6 +83,26 @@ export default function CleanTake({ id, onBack }) {
   }
   function dl() { if (!url) return; const ext = take && take.type && take.type.indexOf("mp4") >= 0 ? "mp4" : "webm"; const a = document.createElement("a"); a.href = url; a.download = "promptdrop-original." + ext; a.click(); }
 
+  const [exporting, setExporting] = useState(null);
+  const [prog, setProg] = useState(0);
+  const [exportErr, setExportErr] = useState("");
+  async function exportClean(withCaptions) {
+    if (!take?.blob) return;
+    setExportErr(""); setExporting(withCaptions ? "captioned" : "clean"); setProg(0);
+    try {
+      const out = await renderCleanVideo(take.blob, { removed, rate, filterCss, trimStart, trimEnd, segments: take.segments || null, withCaptions, onProgress: setProg });
+      downloadBlob(out, `promptdrop-clean-take.webm`);
+    } catch (e) { setExportErr(e.message || "Export failed."); }
+    setExporting(null); setProg(0);
+  }
+  async function exportAudio() {
+    if (!take?.blob) return;
+    setExportErr(""); setExporting("audio");
+    try { const out = await renderAudioWav(take.blob, { trimStart, trimEnd }); downloadBlob(out, "promptdrop-audio.wav"); }
+    catch (e) { setExportErr(e.message || "Export failed."); }
+    setExporting(null);
+  }
+
   if (analysing) return (
     <main className="wrap" style={{ padding: "120px 24px", textAlign: "center", maxWidth: 560 }}>
       <button className="btn btn--ghost" onClick={onBack} style={{ position: "absolute", left: 20, top: 70 }}>← Back</button>
@@ -106,9 +127,13 @@ export default function CleanTake({ id, onBack }) {
             ))}
           </div>
           <p style={{ marginTop: 12, fontSize: 14, color: "var(--text-secondary)" }}>
-            {preset !== "Off" || trimStart || trimEnd
-              ? <>Removed {pauseDecisions.length} pause{pauseDecisions.length === 1 ? "" : "s"} and {ctClock(removedSec)}. Clean Take is {ctClock(cleanDur)} (was {ctClock(dur)}).</>
-              : <>Original {ctClock(dur)}. Turn on pause cleanup to tighten it.</>}
+            {preset !== "Off" && !silences
+              ? <>{preset} pause cleanup selected. Automatic pause detection is not available for this recording.</>
+              : preset !== "Off" && pauseDecisions.length
+              ? <>{pauseDecisions.length} pause{pauseDecisions.length === 1 ? "" : "s"} suggested · {ctClock(dur)} → {ctClock(cleanDur)}</>
+              : (trimStart || trimEnd || rate !== 1)
+              ? <>Edits applied · {ctClock(dur)} → {ctClock(cleanDur)}</>
+              : <>Clean Take is ready for edits · {ctClock(dur)}</>}
           </p>
           {/* Edit Map */}
           <div style={{ marginTop: 16 }}>
@@ -169,10 +194,12 @@ export default function CleanTake({ id, onBack }) {
           )}
           {tab === "Export" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {exporting && <div className="note" style={{ marginBottom: 4 }}>Rendering {exporting} export... {prog > 0 ? Math.round(prog * 100) + "%" : ""} This plays the take through once, so it takes about as long as the video.</div>}
+              {exportErr && <div className="note note--err" style={{ marginBottom: 4 }}>{exportErr}</div>}
               <Exp label="Original video" sub={ctClock(dur)} ready onClick={dl} />
-              <Exp label="Clean Take video" sub={ctClock(cleanDur) + " · rendered on our server"} note="Export rendering is not connected yet." />
-              <Exp label="Captioned video" sub="Needs transcription + rendering" />
-              <Exp label="Audio only" sub="Needs rendering" />
+              <Exp label="Clean Take video" sub={`${ctClock(cleanDur)} · renders in your browser`} ready={!!take?.blob && !exporting} onClick={() => exportClean(false)} />
+              <Exp label="Captioned video" sub={take && take.segments && take.segments.length ? "Burns in captions" : "Needs transcription"} ready={!!(take && take.segments && take.segments.length) && !exporting} onClick={() => exportClean(true)} />
+              <Exp label="Audio only (WAV)" sub="Extracts the audio" ready={!!take?.blob && !exporting} onClick={exportAudio} />
               <Exp label="Transcript" sub={take && take.transcript ? "Ready" : "Needs transcription"} ready={!!(take && take.transcript)} onClick={() => { if (take && take.transcript) ctDownloadText(take.transcript, "transcript.txt"); }} />
               <Exp label="Captions (SRT)" sub={take && take.segments && take.segments.length ? "Ready" : "Needs word timing"} ready={!!(take && take.segments && take.segments.length)} onClick={() => ctDownloadText(ctSRT(take.segments), "captions.srt")} />
               <Exp label="Captions (VTT)" sub={take && take.segments && take.segments.length ? "Ready" : "Needs word timing"} ready={!!(take && take.segments && take.segments.length)} onClick={() => ctDownloadText(ctVTT(take.segments), "captions.vtt")} />

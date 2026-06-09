@@ -11,6 +11,7 @@ import Download from "./pages/Download.jsx";
 import Account from "./pages/Account.jsx";
 import Studio from "./pages/Studio.jsx";
 import Meetings from "./pages/Meetings.jsx";
+import Takes from "./pages/Takes.jsx";
 import Scripts from "./pages/Scripts.jsx";
 import Welcome from "./pages/Welcome.jsx";
 import StudioEmbed from "./pages/StudioEmbed.jsx";
@@ -34,11 +35,13 @@ function DesktopApp() {
         <span style={{ fontWeight: 800, letterSpacing: "-.02em", marginRight: 10, color: "var(--text-primary,#fff)" }}>PromptDrop</span>
         <div style={{ display: "inline-flex", padding: 3, gap: 2, background: "var(--surface-sunken, #131419)", border: "1px solid var(--border-default,#23262e)", borderRadius: 10 }}>
           {tab("prompter", "Teleprompter")}
+          {tab("takes", "Takes")}
           {tab("meetings", "Meetings")}
         </div>
       </div>
-      <div style={{ flex: 1, minHeight: 0, position: "relative", overflow: view === "meetings" ? "auto" : "hidden" }}>
+      <div style={{ flex: 1, minHeight: 0, position: "relative", overflow: view === "prompter" ? "hidden" : "auto" }}>
         <div style={{ position: "absolute", inset: 0, display: view === "prompter" ? "block" : "none" }}><StudioEmbed /></div>
+        {view === "takes" && <Takes />}
         {view === "meetings" && <Meetings />}
       </div>
     </div>

@@ -23,6 +23,43 @@ function ctStamp(t, comma) { t = Math.max(0, t || 0); const h = Math.floor(t / 3
 function ctSRT(segs) { return (segs || []).map((s, i) => `${i + 1}\n${ctStamp(s.start, true)} --> ${ctStamp(s.end, true)}\n${(s.text || "").trim()}\n`).join("\n"); }
 function ctVTT(segs) { return "WEBVTT\n\n" + (segs || []).map((s) => `${ctStamp(s.start, false)} --> ${ctStamp(s.end, false)}\n${(s.text || "").trim()}\n`).join("\n"); }
 function ctDownloadText(text, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" })); a.download = name; a.click(); }
+function ctDownloadBlob(blob, name) { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); setTimeout(() => { try { URL.revokeObjectURL(u); } catch (e) {} }, 4000); }
+const _ctSeek = (v, t) => new Promise((res) => { const f = () => { v.removeEventListener("seeked", f); res(); }; v.addEventListener("seeked", f); try { v.currentTime = t; } catch (e) { res(); } });
+function _ctCaption(ctx, segments, t, w, h) { const seg = (segments || []).find((s) => t >= s.start && t <= s.end); if (!seg || !seg.text) return; const fs = Math.round(h * 0.045); ctx.font = `600 ${fs}px sans-serif`; ctx.textAlign = "center"; const text = seg.text.trim().slice(0, 90); const y = h - Math.round(h * 0.08); const mw = ctx.measureText(text).width; ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(w / 2 - mw / 2 - 16, y - fs, mw + 32, fs + 18); ctx.fillStyle = "#fff"; ctx.fillText(text, w / 2, y); }
+// Real in-browser Clean Take render (canvas capture + WebAudio). No server.
+async function ctRenderCleanVideo(blob, opts = {}) {
+  const { removed = [], rate = 1, filterCss = "none", trimStart = 0, trimEnd = 0, segments = null, withCaptions = false, onProgress } = opts;
+  if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) throw new Error("This browser cannot render video here.");
+  const url = URL.createObjectURL(blob); const video = document.createElement("video"); video.src = url; video.playsInline = true;
+  await new Promise((res, rej) => { video.onloadedmetadata = res; video.onerror = () => rej(new Error("Could not read the recording.")); });
+  const dur = isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+  const w = video.videoWidth || 720, h = video.videoHeight || 1280;
+  const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h; const ctx = canvas.getContext("2d");
+  const cStream = canvas.captureStream(30); let combined = cStream, ac;
+  try { const AC = window.AudioContext || window.webkitAudioContext; ac = new AC(); const s = ac.createMediaElementSource(video); const d = ac.createMediaStreamDestination(); s.connect(d); combined = new MediaStream([...cStream.getVideoTracks(), ...d.stream.getAudioTracks()]); } catch (e) {}
+  const mime = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find((m) => { try { return MediaRecorder.isTypeSupported(m); } catch (e) { return false; } }) || "";
+  const rec = mime ? new MediaRecorder(combined, { mimeType: mime }) : new MediaRecorder(combined); const chunks = []; rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  const segs = ctMerge(removed); const startAt = trimStart > 0 ? trimStart : 0; const endAt = trimEnd > 0 ? Math.max(startAt + 0.1, dur - trimEnd) : dur;
+  try { video.playbackRate = rate || 1; } catch (e) {} await _ctSeek(video, startAt);
+  let finished = false, raf = 0; const finish = () => { if (finished) return; finished = true; cancelAnimationFrame(raf); try { video.pause(); } catch (e) {} try { rec.stop(); } catch (e) {} };
+  function draw() { try { ctx.filter = filterCss || "none"; ctx.drawImage(video, 0, 0, w, h); ctx.filter = "none"; if (withCaptions && segments) _ctCaption(ctx, segments, video.currentTime, w, h); } catch (e) {} raf = requestAnimationFrame(draw); }
+  function onTime() { const t = video.currentTime; if (t >= endAt - 0.03) { finish(); return; } for (const s of segs) { if (t >= s.start - 0.02 && t < s.end - 0.05) { try { video.currentTime = s.end + 0.001; } catch (e) {} break; } } if (onProgress) onProgress(Math.max(0, Math.min(1, (t - startAt) / Math.max(0.1, endAt - startAt)))); }
+  video.addEventListener("timeupdate", onTime); video.addEventListener("ended", finish); rec.start(); draw();
+  try { await video.play(); } catch (e) { finish(); throw new Error("Tap the video once, then export."); }
+  const out = await new Promise((res) => { rec.onstop = () => res(new Blob(chunks, { type: mime || "video/webm" })); setTimeout(() => { if (!finished) finish(); }, (Math.max(1, (endAt - startAt) / (rate || 1)) * 1000) + 4000); });
+  try { URL.revokeObjectURL(url); } catch (e) {} try { ac && ac.close(); } catch (e) {}
+  return out;
+}
+async function ctRenderAudioWav(blob, opts = {}) {
+  const { trimStart = 0, trimEnd = 0 } = opts; const AC = window.AudioContext || window.webkitAudioContext; if (!AC) throw new Error("Audio export not supported here.");
+  const buf = await blob.arrayBuffer(); const ac = new AC(); const audio = await ac.decodeAudioData(buf.slice(0)).catch(() => null); if (!audio) { try { ac.close(); } catch (e) {} throw new Error("Could not read audio."); }
+  const sr = audio.sampleRate; const start = Math.floor((trimStart || 0) * sr); const end = trimEnd > 0 ? Math.floor((audio.duration - trimEnd) * sr) : audio.length; const len = Math.max(0, end - start); const ch = Math.min(2, audio.numberOfChannels);
+  const out = new ArrayBuffer(44 + len * ch * 2); const view = new DataView(out); const ws = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); view.setUint32(4, 36 + len * ch * 2, true); ws(8, "WAVE"); ws(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, ch, true); view.setUint32(24, sr, true); view.setUint32(28, sr * ch * 2, true); view.setUint16(32, ch * 2, true); view.setUint16(34, 16, true); ws(36, "data"); view.setUint32(40, len * ch * 2, true);
+  let off = 44; const cs = []; for (let c = 0; c < ch; c++) cs.push(audio.getChannelData(c));
+  for (let i = start; i < end; i++) for (let c = 0; c < ch; c++) { let v = Math.max(-1, Math.min(1, cs[c][i] || 0)); view.setInt16(off, v < 0 ? v * 0x8000 : v * 0x7FFF, true); off += 2; }
+  try { ac.close(); } catch (e) {} return new Blob([out], { type: "audio/wav" });
+}
 
 // Detect silent stretches in the recording's audio, entirely on-device (no upload).
 async function ctDetectSilences(blob) {
@@ -106,6 +143,9 @@ function CleanTakeScreen({ app }) {
   const [style, setStyle] = React.useState({ b: 100, c: 100, s: 100 });
   const [editMap, setEditMap] = React.useState(false);
   const [transcribing, setTranscribing] = React.useState(false);
+  const [exporting, setExporting] = React.useState(null);
+  const [prog, setProg] = React.useState(0);
+  const [exportErr, setExportErr] = React.useState("");
   const vref = React.useRef(null);
   const segs = (take && take.segments) || [];
 
@@ -166,6 +206,20 @@ function CleanTakeScreen({ app }) {
     else app.toast(tr.msg || "Transcription is not switched on yet");
   }
   function download() { if (!url) return; const ext = take && take.type && take.type.indexOf("mp4") >= 0 ? "mp4" : "webm"; const a = document.createElement("a"); a.href = url; a.download = "promptdrop-original." + ext; a.click(); }
+  async function exportClean(withCaptions) {
+    if (!take || !take.blob || exporting) return;
+    setExportErr(""); setExporting(withCaptions ? "captioned" : "clean"); setProg(0);
+    try { const out = await ctRenderCleanVideo(take.blob, { removed, rate, filterCss, trimStart, trimEnd, segments: take.segments || null, withCaptions, onProgress: setProg }); ctDownloadBlob(out, "promptdrop-clean-take.webm"); }
+    catch (e) { setExportErr(e.message || "Export failed."); }
+    setExporting(null); setProg(0);
+  }
+  async function exportAudio() {
+    if (!take || !take.blob || exporting) return;
+    setExportErr(""); setExporting("audio");
+    try { const out = await ctRenderAudioWav(take.blob, { trimStart, trimEnd }); ctDownloadBlob(out, "promptdrop-audio.wav"); }
+    catch (e) { setExportErr(e.message || "Export failed."); }
+    setExporting(null);
+  }
 
   const TABS = ["Review", "Clean", "Captions", "Style", "Export"];
 
@@ -203,9 +257,13 @@ function CleanTakeScreen({ app }) {
         )}
         {hasVideo && (
           <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--text-secondary)", textAlign: "center", lineHeight: 1.45 }}>
-            {preset !== "Off" || trimStart || trimEnd
-              ? <>Removed {pauseDecisions.length} pause{pauseDecisions.length === 1 ? "" : "s"} and {ctClock(removedSec)}. Clean Take is {ctClock(cleanDur)} (was {ctClock(dur)}).</>
-              : <>Original {ctClock(dur)}. Turn on pause cleanup to tighten it.</>}
+            {preset !== "Off" && !silences
+              ? <>{preset} pause cleanup selected. Automatic pause detection is not available for this recording.</>
+              : preset !== "Off" && pauseDecisions.length
+              ? <>{pauseDecisions.length} pause{pauseDecisions.length === 1 ? "" : "s"} suggested · {ctClock(dur)} → {ctClock(cleanDur)}</>
+              : (trimStart || trimEnd || rate !== 1)
+              ? <>Edits applied · {ctClock(dur)} → {ctClock(cleanDur)}</>
+              : <>Clean Take is ready for edits · {ctClock(dur)}</>}
           </div>
         )}
       </div>
@@ -291,10 +349,12 @@ function CleanTakeScreen({ app }) {
 
         {tab === "Export" && (
           <div style={{ paddingTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+            {exporting && <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--surface-sunken)", borderRadius: 10, padding: "10px 12px" }}>Rendering {exporting} export{prog > 0 ? " · " + Math.round(prog * 100) + "%" : "…"}. This plays the take through once, so it takes about as long as the video.</div>}
+            {exportErr && <div style={{ fontSize: 12.5, color: "var(--recording)", background: "var(--surface-sunken)", borderRadius: 10, padding: "10px 12px" }}>{exportErr}</div>}
             <ExportRow label="Original video" sub={ctClock(dur)} ready onClick={download} />
-            <ExportRow label="Clean Take video" sub={ctClock(cleanDur) + " · rendered on our server"} pending note="Export rendering is not connected yet." />
-            <ExportRow label="Captioned video" sub="Needs transcription + rendering" pending />
-            <ExportRow label="Audio only" sub="Needs rendering" pending />
+            <ExportRow label="Clean Take video" sub={ctClock(cleanDur) + " · renders on your phone"} ready={!!take?.blob && !exporting} onClick={() => exportClean(false)} />
+            <ExportRow label="Captioned video" sub={segs.length ? "Burns in captions" : "Needs transcription"} ready={segs.length > 0 && !exporting} onClick={() => exportClean(true)} />
+            <ExportRow label="Audio only (WAV)" sub="Extracts the audio" ready={!!take?.blob && !exporting} onClick={exportAudio} />
             <ExportRow label="Transcript" sub={take && take.transcript ? "Ready" : "Needs transcription"} ready={!!(take && take.transcript)} onClick={() => { if (take && take.transcript) ctDownloadText(take.transcript, "transcript.txt"); }} />
             <ExportRow label="Captions (SRT)" sub={segs.length ? "Ready" : "Needs word timing"} ready={segs.length > 0} onClick={() => ctDownloadText(ctSRT(segs), "captions.srt")} />
             <ExportRow label="Captions (VTT)" sub={segs.length ? "Ready" : "Needs word timing"} ready={segs.length > 0} onClick={() => ctDownloadText(ctVTT(segs), "captions.vtt")} />
