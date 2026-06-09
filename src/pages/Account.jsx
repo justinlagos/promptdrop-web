@@ -161,7 +161,7 @@ export default function Account() {
             <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 4 }}>Current plan</div>
             <div style={{ fontSize: 20, fontWeight: 800 }}>{planDef.name}</div>
             <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-              {plan === "free" ? "Free, local-first." : `${status}${sub?.billing_cycle ? ` · billed ${sub.billing_cycle}` : ""}${periodEnd ? ` · renews ${periodEnd}` : ""}`}
+              {plan === "free" ? "Free plan." : `${status}${sub?.billing_cycle ? ` · billed ${sub.billing_cycle}` : ""}${periodEnd ? ` · renews ${periodEnd}` : ""}`}
               {sub?.cancel_at_period_end ? " · cancels at period end" : ""}
             </div>
           </div>

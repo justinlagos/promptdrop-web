@@ -58,13 +58,14 @@ function AppLoader() {
 
 // Guest access is removed: every app route requires an account. Auth must resolve
 // before any content renders, so users never see a Guest state first.
+// ONE cloud-backed app on every device (the /m experience) so the same account
+// always shows the same scripts and content on desktop and mobile.
 function AppArea() {
-  const mobile = useIsMobile();
   const { isSignedIn, loading } = useAuth();
   const { pathname, search } = useLocation();
   if (loading) return <AppLoader />;
   if (!isSignedIn) return <Navigate to={`/welcome?next=${encodeURIComponent(pathname + search)}`} replace />;
-  return mobile ? <MobileApp /> : <DesktopApp />;
+  return <MobileApp />;
 }
 
 // Cloud-only routes: must be signed in. No guest access anywhere.

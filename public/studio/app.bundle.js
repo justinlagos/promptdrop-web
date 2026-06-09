@@ -1562,7 +1562,7 @@ function ScriptStudio() {
       fontSize: 14,
       marginBottom: 18
     }
-  }, "Create one to start writing, it stays on this Mac."), /*#__PURE__*/React.createElement("button", {
+  }, "Create one to start writing."), /*#__PURE__*/React.createElement("button", {
     className: "btn btn--primary",
     style: {
       margin: "0 auto"
@@ -2539,7 +2539,7 @@ function Preferences() {
     icon: I2.star
   }, /*#__PURE__*/React.createElement(Row, {
     label: pd.displayName,
-    sub: pd.user ? "Signed in" : "Local mode, your work stays on this Mac"
+    sub: pd.user ? "Signed in" : "Synced to your PromptDrop account"
   }, /*#__PURE__*/React.createElement("span", {
     className: "avatar avatar--accent"
   }, pd.initials)), /*#__PURE__*/React.createElement(Row, {
@@ -2632,7 +2632,7 @@ function Preferences() {
     icon: I2.star
   }, /*#__PURE__*/React.createElement(Row, {
     label: "PromptDrop",
-    sub: "Local-first \xB7 your work stays on this Mac"
+    sub: "Synced to your PromptDrop account"
   }, /*#__PURE__*/React.createElement("span", {
     className: "badge badge--success"
   }, /*#__PURE__*/React.createElement("i", null), " v1.6")))));
