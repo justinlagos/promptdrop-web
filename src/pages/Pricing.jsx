@@ -9,7 +9,7 @@ export default function Pricing() {
   const [cycle, setCycle] = useState("monthly");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState("");
-  const order = ["free", "creator_pro", "studio_pro"];
+  const order = ["creator_pro", "studio_pro"];
 
   const onCta = async (id) => {
     setNote("");
@@ -29,7 +29,7 @@ export default function Pricing() {
         <div className="eyebrow" style={{ marginBottom: 10 }}>Plans &amp; pricing</div>
         <h1 style={{ fontSize: "clamp(28px,4vw,40px)", fontWeight: 800, letterSpacing: "-.03em" }}>Choose how you want to prompt.</h1>
         <p style={{ color: "var(--text-secondary)", fontSize: 17, maxWidth: "60ch", margin: "12px auto 0", lineHeight: 1.55 }}>
-          Start free with the camera-level teleprompter. Upgrade when you need AI, voice-follow, take review, cloud sync, desktop overlay, meeting mode and recording.
+          Every account starts with a 7-day free trial of full access. After that, keep going with Creator Pro or Studio Pro. Cancel anytime.
         </p>
       </div>
 

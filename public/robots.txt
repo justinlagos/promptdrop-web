@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /welcome
+Disallow: /account
+Disallow: /meeting
+Disallow: /scripts
+Disallow: /m/
+Disallow: /studio/
+Disallow: /auth
+Disallow: /api
+Disallow: /admin
+
+Sitemap: https://promptdrop-web.vercel.app/sitemap.xml

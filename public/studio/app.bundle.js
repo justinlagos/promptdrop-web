@@ -9,8 +9,8 @@ const PD_PLANS = {
     name: "Free",
     price: "$0",
     cycle: "",
-    blurb: "For trying PromptDrop",
-    cta: "Start free"
+    blurb: "7-day free trial",
+    cta: "Start free trial"
   },
   creator_pro: {
     id: "creator_pro",
@@ -2769,7 +2769,7 @@ function Pricing() {
       marginBottom: 24,
       lineHeight: 1.55
     }
-  }, "Start free with the camera-level teleprompter. Upgrade when you need AI, voice-follow, take review, cloud sync, desktop overlay and meeting mode."), /*#__PURE__*/React.createElement("div", {
+  }, "Every account starts with a 7-day free trial of full access. After that, keep going with Creator Pro or Studio Pro."), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",

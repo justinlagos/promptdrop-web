@@ -159,9 +159,9 @@ export default function Account() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 4 }}>Current plan</div>
-            <div style={{ fontSize: 20, fontWeight: 800 }}>{planDef.name}</div>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>{plan === "free" ? "No plan" : planDef.name}</div>
             <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-              {plan === "free" ? "Free plan." : `${status}${sub?.billing_cycle ? ` · billed ${sub.billing_cycle}` : ""}${periodEnd ? ` · renews ${periodEnd}` : ""}`}
+              {plan === "free" ? "No active plan. Choose Creator Pro or Studio Pro to keep your paid features." : `${status}${sub?.billing_cycle ? ` · billed ${sub.billing_cycle}` : ""}${periodEnd ? ` · renews ${periodEnd}` : ""}`}
               {sub?.cancel_at_period_end ? " · cancels at period end" : ""}
             </div>
           </div>

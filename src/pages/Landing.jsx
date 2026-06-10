@@ -29,11 +29,11 @@ export default function Landing() {
             Read naturally on camera with a floating prompt that stays close to your lens, helps you speak clearly, and keeps your eyes up.
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-            <Link className="btn btn--primary btn--lg" to="/app">{mobile ? "Open the app" : "Start free"}</Link>
+            <Link className="btn btn--primary btn--lg" to="/app">{mobile ? "Start free trial" : "Start 7-day free trial"}</Link>
             <DownloadBtn />
           </div>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 16, fontFamily: "var(--font-mono)", letterSpacing: ".02em" }}>
-            {mobile ? "Free in your browser · add to your home screen for the full app" : "Use it in your browser today · desktop overlay for meetings & presentations"}
+            {mobile ? "7-day free trial in your browser · no card to start" : "7-day free trial in your browser · no card to start · desktop overlay for meetings"}
           </p>
           <div style={{ marginTop: 40 }}><Drop scriptLine="Hi, I’m Justin." /></div>
         </div>
@@ -92,9 +92,9 @@ export default function Landing() {
       {/* PRICING PREVIEW */}
       <section className="block"><div className="wrap" style={{ textAlign: "center" }}>
         <div className="eyebrow" style={{ marginBottom: 12 }}>Pricing</div>
-        <h2 style={{ margin: "0 auto" }}>Start free. Upgrade when PromptDrop joins your workflow.</h2>
+        <h2 style={{ margin: "0 auto" }}>Try it free for 7 days. Upgrade when PromptDrop joins your workflow.</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 16, marginTop: 40, textAlign: "left" }}>
-          {["free", "creator_pro", "studio_pro"].map((id) => {
+          {["creator_pro", "studio_pro"].map((id) => {
             const p = PLANS[id];
             return (
               <div key={id} className="card" style={{ padding: 22, borderColor: p.badge ? "rgba(76,141,255,.4)" : undefined }}>
@@ -123,9 +123,9 @@ export default function Landing() {
       {/* FINAL CTA */}
       <section className="block" style={{ textAlign: "center", paddingTop: 0 }}><div className="wrap">
         <h2 style={{ margin: "0 auto" }}>Keep your eyes on the lens.</h2>
-        <p className="lead" style={{ margin: "12px auto 26px" }}>{mobile ? "Start free in your browser, no install needed." : "Start free in your browser, or get the desktop app for meetings and presentations."}</p>
+        <p className="lead" style={{ margin: "12px auto 26px" }}>{mobile ? "Start your 7-day free trial in your browser, no install needed." : "Start your 7-day free trial in your browser, or get the desktop app for meetings and presentations."}</p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-          <Link className="btn btn--primary btn--lg" to="/app">{mobile ? "Open the app" : "Start free"}</Link>
+          <Link className="btn btn--primary btn--lg" to="/app">{mobile ? "Start free trial" : "Start 7-day free trial"}</Link>
           <DownloadBtn />
         </div>
       </div></section>
