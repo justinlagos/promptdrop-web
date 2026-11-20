@@ -15,9 +15,8 @@ Use an installed Chrome instead of Playwright's Chromium: `PW_CHANNEL=chrome npm
 Open the last HTML report: `npm run test:ux:report`. Failures save a screenshot and a trace
 in `test-results/`.
 
-The suite builds the site and serves it itself. It runs on every pull request and on
-pushes to `main` once `.github/workflows/ux-regression.yml` is added (see the note in the
-pull request that introduced this suite).
+The suite builds the site and serves it itself. GitHub runs it on every pull request and
+on pushes to `main` (`.github/workflows/ux-regression.yml`).
 
 ## What each file guards
 
