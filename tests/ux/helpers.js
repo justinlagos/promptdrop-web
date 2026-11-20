@@ -79,7 +79,8 @@ export async function listTakes(frame) {
 }
 
 // Adds a short real video take straight into storage, so editor tests do not depend on
-// the recording flow. Canvas video plus a quiet tone, about two seconds.
+// the recording flow. Canvas video with a tone, a silent gap in the middle, then the tone
+// again, so pause detection has exactly one real pause to find. About 3.4 seconds.
 export async function seedTake(frame, title = "Seeded take") {
   await frame.evaluate(async (title) => {
     const canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 360;
@@ -87,17 +88,17 @@ export async function seedTake(frame, title = "Seeded take") {
     let n = 0; const paint = () => { ctx.fillStyle = `hsl(${(n * 7) % 360} 60% 40%)`; ctx.fillRect(0, 0, 640, 360); ctx.fillStyle = "#fff"; ctx.font = "48px sans-serif"; ctx.fillText("take " + n++, 40, 190); };
     paint(); const timer = setInterval(paint, 50);
     const stream = canvas.captureStream(20);
-    try {
-      const ac = new AudioContext(); const osc = ac.createOscillator(); const gain = ac.createGain(); gain.gain.value = 0.05;
-      const dest = ac.createMediaStreamDestination(); osc.connect(gain); gain.connect(dest); osc.start();
-      dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
-    } catch (e) {}
+    const ac = new AudioContext(); const osc = ac.createOscillator(); const gain = ac.createGain();
+    const dest = ac.createMediaStreamDestination(); osc.connect(gain); gain.connect(dest); osc.start();
+    const t0 = ac.currentTime;
+    gain.gain.setValueAtTime(0.6, t0); gain.gain.setValueAtTime(0, t0 + 1.0); gain.gain.setValueAtTime(0.6, t0 + 2.4);
+    dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
     const chunks = []; const mr = new MediaRecorder(stream);
     mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
     const done = new Promise((res) => { mr.onstop = res; });
-    mr.start(200); await new Promise((r) => setTimeout(r, 2200)); mr.stop(); await done; clearInterval(timer);
+    mr.start(200); await new Promise((r) => setTimeout(r, 3400)); mr.stop(); await done; clearInterval(timer); try { ac.close(); } catch (e) {}
     const blob = new Blob(chunks, { type: mr.mimeType || "video/webm" });
-    await PDsvc.putTake({ id: "seed-" + Date.now(), createdAt: Date.now(), durationMs: 2200, size: blob.size, type: blob.type, source: "camera", title, blob });
+    await PDsvc.putTake({ id: "seed-" + Date.now(), createdAt: Date.now(), durationMs: 3400, size: blob.size, type: blob.type, source: "camera", title, blob });
   }, title);
 }
 

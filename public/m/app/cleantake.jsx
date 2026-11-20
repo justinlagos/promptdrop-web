@@ -27,12 +27,31 @@ function ctDownloadBlob(blob, name) { const u = URL.createObjectURL(blob); const
 const _ctSeek = (v, t) => new Promise((res) => { const f = () => { v.removeEventListener("seeked", f); res(); }; v.addEventListener("seeked", f); try { v.currentTime = t; } catch (e) { res(); } });
 function _ctCaption(ctx, segments, t, w, h) { const seg = (segments || []).find((s) => t >= s.start && t <= s.end); if (!seg || !seg.text) return; const fs = Math.round(h * 0.045); ctx.font = `600 ${fs}px sans-serif`; ctx.textAlign = "center"; const text = seg.text.trim().slice(0, 90); const y = h - Math.round(h * 0.08); const mw = ctx.measureText(text).width; ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(w / 2 - mw / 2 - 16, y - fs, mw + 32, fs + 18); ctx.fillStyle = "#fff"; ctx.fillText(text, w / 2, y); }
 // Real in-browser Clean Take render (canvas capture + WebAudio). No server.
+// Recordings made in the browser often have no length in the file, so the video element
+// reports Infinity. Work the real length out instead of treating it as zero: seeking far
+// past the end makes the browser scan the file and report the true duration.
+async function _ctResolveDuration(video, hint) {
+  if (isFinite(video.duration) && video.duration > 0) return video.duration;
+  try {
+    await new Promise((res) => {
+      let done = false; const end = () => { if (done) return; done = true; video.removeEventListener("durationchange", chk); video.removeEventListener("timeupdate", chk); res(); };
+      const chk = () => { if (isFinite(video.duration) && video.duration > 0) end(); };
+      video.addEventListener("durationchange", chk); video.addEventListener("timeupdate", chk);
+      setTimeout(end, 4000);
+      try { video.currentTime = 1e101; } catch (e) { end(); }
+    });
+  } catch (e) {}
+  if (isFinite(video.duration) && video.duration > 0) return video.duration;
+  return hint > 0 ? hint : 0;
+}
+
 async function ctRenderCleanVideo(blob, opts = {}) {
-  const { removed = [], rate = 1, filterCss = "none", trimStart = 0, trimEnd = 0, segments = null, withCaptions = false, onProgress } = opts;
+  const { removed = [], rate = 1, filterCss = "none", trimStart = 0, trimEnd = 0, segments = null, withCaptions = false, onProgress, duration = 0 } = opts;
   if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) throw new Error("This browser cannot render video here.");
   const url = URL.createObjectURL(blob); const video = document.createElement("video"); video.src = url; video.playsInline = true;
   await new Promise((res, rej) => { video.onloadedmetadata = res; video.onerror = () => rej(new Error("Could not read the recording.")); });
-  const dur = isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+  const dur = await _ctResolveDuration(video, duration);
+  if (!(dur > 0)) { try { URL.revokeObjectURL(url); } catch (e) {} throw new Error("Could not work out the length of this recording, so it cannot be exported here."); }
   const w = video.videoWidth || 720, h = video.videoHeight || 1280;
   const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h; const ctx = canvas.getContext("2d");
   const cStream = canvas.captureStream(30); let combined = cStream, ac;
@@ -71,9 +90,16 @@ async function ctDetectSilences(blob) {
     if (!audio) { try { ctx.close(); } catch (e) {} return null; }
     const data = audio.getChannelData(0); const sr = audio.sampleRate; const win = Math.floor(sr * 0.02);
     const energies = []; for (let i = 0; i < data.length; i += win) { let sum = 0; for (let j = i; j < i + win && j < data.length; j++) sum += data[j] * data[j]; energies.push(Math.sqrt(sum / win)); }
-    const sorted = [...energies].sort((a, b) => a - b); const median = sorted[Math.floor(sorted.length / 2)] || 0;
-    const peak = sorted[Math.floor(sorted.length * 0.95)] || 0.01;
-    const floor = Math.max(median * 1.8, peak * 0.06, 0.004);   // adaptive silence threshold
+    const sorted = [...energies].sort((a, b) => a - b);
+    const peak = sorted[Math.floor(sorted.length * 0.95)] || 0;
+    // No usable audio at all: report no pauses instead of calling the whole take a pause.
+    if (peak < 0.003) { try { ctx.close(); } catch (e) {} return { silences: [], duration: audio.duration }; }
+    // Silence threshold. Built from the quietest tenth of the take (the room noise) and a
+    // fraction of the loud parts, and never more than about a third of the loud level.
+    // The old rule used the median, so steady speech or any even sound sat below its own
+    // threshold and the whole take was marked as one long pause.
+    const quiet = sorted[Math.floor(sorted.length * 0.1)] || 0;
+    const floor = Math.min(Math.max(quiet * 2.5, peak * 0.08, 0.004), peak * 0.35);
     const sil = []; let runStart = -1;
     for (let k = 0; k < energies.length; k++) {
       const t = k * 0.02;
@@ -120,6 +146,47 @@ function CleanPreview({ url, removed, rate, filterCss, active, trimStart, trimEn
   return <video ref={ref} src={url} playsInline controls preload="metadata" onLoadedMetadata={applyRate} onPlay={onPlay} onRateChange={applyRate} onTimeUpdate={onTime} style={{ width: "100%", height: "100%", objectFit: "contain", background: "#000", filter: filterCss || "none", transition: "filter .12s ease" }} />;
 }
 
+// One comparable string for the current edit decisions. Used to tell saved from unsaved.
+function ctEditKey(e) {
+  const restored = Object.keys(e.restored || {}).filter((k) => e.restored[k]).sort();
+  const st = e.style || {};
+  return JSON.stringify([e.preset, e.speed, Number(e.trimStart) || 0, Number(e.trimEnd) || 0, restored, Number(st.b), Number(st.c), Number(st.s)]);
+}
+
+// Desktop edit map: the whole take as one bar. Green is kept, red is removed. Click the
+// bar to move the playhead. Click a removed pause to keep it, click again to remove it.
+function CtTimeline({ vref, dur, removed, pauses, restored, onToggle, trimStart, trimEnd, cleanDur }) {
+  const [t, setT] = React.useState(0);
+  React.useEffect(() => {
+    const id = setInterval(() => { const v = vref.current; if (v) setT(v.currentTime || 0); }, 120);
+    return () => clearInterval(id);
+  }, [vref]);
+  const pct = (x) => (dur > 0 ? Math.max(0, Math.min(100, (x / dur) * 100)) : 0);
+  const seek = (e) => {
+    const r = e.currentTarget.getBoundingClientRect(); const v = vref.current;
+    if (v && dur > 0) { v.currentTime = Math.max(0, Math.min(dur, ((e.clientX - r.left) / r.width) * dur)); setT(v.currentTime); }
+  };
+  const trims = (removed || []).filter((s) => s.type === "trim");
+  return (
+    <div data-testid="ct-timeline" style={{ flexShrink: 0, background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 16, padding: "12px 14px 14px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Edit map</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: "0.04em", color: "var(--text-muted)" }}>{ctClock(t)} / {ctClock(dur)} · clean {ctClock(cleanDur)}</span>
+      </div>
+      <div data-testid="ct-timeline-bar" onClick={seek} role="slider" aria-label="Playhead" aria-valuemin={0} aria-valuemax={Math.round(dur)} aria-valuenow={Math.round(t)} style={{ position: "relative", height: 34, borderRadius: 9, overflow: "hidden", background: "var(--success, #34C759)", cursor: "pointer" }}>
+        {trims.map((s) => (<div key={s.id} title={s.label} style={{ position: "absolute", top: 0, bottom: 0, left: pct(s.start) + "%", width: Math.max(0.4, pct(s.end) - pct(s.start)) + "%", background: "var(--recording, #FF3B30)", opacity: 0.9 }} />))}
+        {(pauses || []).map((p) => {
+          const kept = !!restored[p.id];
+          return (<button key={p.id} data-testid="ct-timeline-pause" data-kept={kept ? "1" : "0"} title={(kept ? "Kept: " : "Removed: ") + p.label + " at " + ctClock(p.start) + ". Click to " + (kept ? "remove" : "keep")} aria-label={(kept ? "Kept pause at " : "Removed pause at ") + ctClock(p.start)} onClick={(e) => { e.stopPropagation(); onToggle(p.id); }}
+            style={{ position: "absolute", top: 0, bottom: 0, left: pct(p.start) + "%", width: Math.max(0.6, pct(p.end) - pct(p.start)) + "%", minWidth: 6, padding: 0, border: kept ? "2px dashed rgba(255,255,255,0.75)" : "none", background: kept ? "transparent" : "var(--recording, #FF3B30)", cursor: "pointer" }} />);
+        })}
+        <div style={{ position: "absolute", top: 0, bottom: 0, left: pct(t) + "%", width: 2, marginLeft: -1, background: "#fff", boxShadow: "0 0 0 1px rgba(0,0,0,0.35)", pointerEvents: "none" }} />
+      </div>
+      <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>Green is kept, red is removed. Click the bar to move the playhead. Click a red pause to keep it. Space plays, arrow keys step one second.</div>
+    </div>
+  );
+}
+
 // ---- the Clean Take screen (replaces the old Take review) -----------------
 function CleanTakeScreen({ app }) {
   const pd = useData();
@@ -149,6 +216,10 @@ function CleanTakeScreen({ app }) {
   const [exportErr, setExportErr] = React.useState("");
   const vref = React.useRef(null);
   const segs = (take && take.segments) || [];
+  const wide = usePdWide();
+  // What was last saved, as a comparable key. Drives the honest Saved / Unsaved status.
+  const savedRef = React.useRef(ctEditKey({ preset: "Balanced", speed: "Normal", trimStart: 0, trimEnd: 0, restored: {}, style: { b: 100, c: 100, s: 100 } }));
+  const [savedTick, setSavedTick] = React.useState(0);
 
   React.useEffect(() => {
     let live = true;
@@ -158,7 +229,16 @@ function CleanTakeScreen({ app }) {
       setTake(t || null); setLoaded(true);
       if (t && t.blob && t.blob.size > 0) {
         const u = URL.createObjectURL(t.blob); urlRef.current = u; setUrl(u);
-        if (t.clean) { setPreset(t.clean.preset || "Balanced"); setSilences(t.clean.silences || null); setDuration(t.clean.duration || (t.durationMs / 1000)); setAnalysing(false); }
+        if (t.clean) {
+          // Reopen with every saved decision, not just the pause preset.
+          const cl = t.clean;
+          setPreset(cl.preset || "Balanced"); setSpeed(cl.speed || "Normal");
+          setTrimStart(Number(cl.trimStart) || 0); setTrimEnd(Number(cl.trimEnd) || 0);
+          setRestored(cl.restored && typeof cl.restored === "object" ? cl.restored : {});
+          setStyle({ b: 100, c: 100, s: 100, ...(cl.style || {}) });
+          savedRef.current = ctEditKey({ preset: cl.preset || "Balanced", speed: cl.speed || "Normal", trimStart: Number(cl.trimStart) || 0, trimEnd: Number(cl.trimEnd) || 0, restored: cl.restored || {}, style: { b: 100, c: 100, s: 100, ...(cl.style || {}) } });
+          setSilences(cl.silences || null); setDuration(cl.duration || (t.durationMs / 1000)); setAnalysing(false);
+        }
         else {
           setStep("Finding pauses…");
           const res = await ctDetectSilences(t.blob);
@@ -194,7 +274,9 @@ function CleanTakeScreen({ app }) {
   async function save() {
     if (!take) return;
     const clean = { preset, speed, trimStart, trimEnd, restored, style, silences, duration: dur, removedPauseCount: pauseDecisions.length, durationBefore: dur, durationAfter: cleanDur, updatedAt: Date.now(), status: "ready" };
-    try { await pd.svc.putTake({ ...take, clean }); } catch (e) {}
+    try { await pd.svc.putTake({ ...take, clean }); } catch (e) { app.toast("Could not save. Storage may be full."); return; }
+    setTake({ ...take, clean });
+    savedRef.current = ctEditKey({ preset, speed, trimStart, trimEnd, restored, style }); setSavedTick((n) => n + 1);
     app.toast("Clean Take saved");
   }
   async function del() { if (take) { await pd.svc.delTake(take.id); pd.reload(); } app.back(); }
@@ -212,7 +294,7 @@ function CleanTakeScreen({ app }) {
   async function exportClean(withCaptions) {
     if (!take || !take.blob || exporting) return;
     setExportErr(""); setExporting(withCaptions ? "captioned" : "clean"); setProg(0);
-    try { const out = await ctRenderCleanVideo(take.blob, { removed, rate, filterCss, trimStart, trimEnd, segments: take.segments || null, withCaptions, onProgress: setProg }); ctDownloadBlob(out, "promptdrop-clean-take.webm"); }
+    try { const out = await ctRenderCleanVideo(take.blob, { removed, rate, filterCss, trimStart, trimEnd, duration: dur, segments: take.segments || null, withCaptions, onProgress: setProg }); ctDownloadBlob(out, "promptdrop-clean-take.webm"); }
     catch (e) { setExportErr(e.message || "Export failed."); }
     setExporting(null); setProg(0);
   }
@@ -225,6 +307,24 @@ function CleanTakeScreen({ app }) {
   }
 
   const TABS = ["Review", "Clean", "Captions", "Style", "Export"];
+  const dirty = ctEditKey({ preset, speed, trimStart, trimEnd, restored, style }) !== savedRef.current;
+  const allPauses = React.useMemo(() => ctPauseDecisions(silences, preset), [silences, preset]);
+  const toggleRestore = (id) => setRestored((r) => ({ ...r, [id]: !r[id] }));
+
+  // Desktop keyboard: Space plays or pauses, arrows step one second. Ignored while typing.
+  React.useEffect(() => {
+    if (!wide) return;
+    const onKey = (e) => {
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const v = vref.current; if (!v) return;
+      if (e.key === " ") { e.preventDefault(); v.paused ? v.play().catch(() => {}) : v.pause(); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); v.currentTime = Math.max(0, v.currentTime - 1); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); v.currentTime = Math.min(v.duration || dur, v.currentTime + 1); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [wide, dur]);
 
   if (analysing) return (
     <Screen>
@@ -237,13 +337,10 @@ function CleanTakeScreen({ app }) {
     </Screen>
   );
 
-  return (
-    <Screen>
-      <NavHeader onBack={app.back} title="Clean Take" action={hasVideo ? <button className="pd-tap" style={iconBtn} onClick={download}><Icon name="download" size={19} color="var(--text-secondary)" /></button> : null} />
-
+  const previewBlock = (<>
       {/* Sticky compact video that stays visible while controls scroll underneath */}
-      <div style={{ flexShrink: 0, padding: "0 14px" }}>
-        <div data-testid="ct-preview" style={{ borderRadius: 18, overflow: "hidden", position: "relative", height: "clamp(120px, calc(50dvh - 160px), 320px)", background: "#000" }}>
+      <div style={wide ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : { flexShrink: 0, padding: "0 14px" }}>
+        <div data-testid="ct-preview" style={wide ? { borderRadius: 18, overflow: "hidden", position: "relative", flex: 1, minHeight: 220, background: "#000" } : { borderRadius: 18, overflow: "hidden", position: "relative", height: "clamp(120px, calc(50dvh - 160px), 320px)", background: "#000" }}>
           {hasVideo ? <CleanPreview vref={vref} url={url} removed={view === "clean" ? removed : []} rate={view === "clean" ? rate : 1} filterCss={view === "clean" ? filterCss : "none"} active={view === "clean"} trimStart={view === "clean" ? trimStart : 0} trimEnd={view === "clean" ? trimEnd : 0} duration={dur} />
             : <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 26, textAlign: "center", gap: 8 }}>
                 <PromptCharacter state={loaded ? "idle" : "processing"} size={56} />
@@ -271,15 +368,19 @@ function CleanTakeScreen({ app }) {
         )}
       </div>
 
+  </>);
+  const tabsBar = (<>
       {/* tabs: a real segmented bar in a sunken track, obvious active state */}
-      <div style={{ flexShrink: 0, padding: "12px 14px 4px" }}>
+      <div style={{ flexShrink: 0, padding: wide ? "14px 16px 4px" : "12px 14px 4px" }}>
         <div className="pd-hscroll" data-testid="ct-tabs" style={{ display: "flex", gap: 2, background: "var(--surface-sunken)", border: "1px solid var(--border-default)", borderRadius: 12, padding: 3, overflowX: "auto" }}>
           {TABS.map((o) => (
-            <button key={o} className="pd-tap" data-testid={"ct-tab-" + o} aria-pressed={tab === o} onClick={() => setTab(o)} style={{ flex: "1 0 auto", minWidth: 72, height: 38, borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)", background: tab === o ? "var(--surface-raised)" : "transparent", color: tab === o ? "var(--text-primary)" : "var(--text-muted)", boxShadow: tab === o ? "var(--shadow-surface)" : "none" }}>{o}</button>
+            <button key={o} className="pd-tap" data-testid={"ct-tab-" + o} aria-pressed={tab === o} onClick={() => setTab(o)} style={{ flex: wide ? "1 1 0" : "1 0 auto", minWidth: wide ? 0 : 72, height: 38, borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)", background: tab === o ? "var(--surface-raised)" : "transparent", color: tab === o ? "var(--text-primary)" : "var(--text-muted)", boxShadow: tab === o ? "var(--shadow-surface)" : "none" }}>{o}</button>
           ))}
         </div>
       </div>
 
+  </>);
+  const panel = (<>
       {/* controls scroll, generous bottom padding so the sticky bar + browser bar never cover them */}
       {/* Longhand padding only: a `padding` shorthand here would override padBottom. */}
       <ScrollArea testid="ct-panel" padBottom={20} style={{ paddingTop: 10, paddingLeft: 16, paddingRight: 16 }}>
@@ -316,7 +417,7 @@ function CleanTakeScreen({ app }) {
               <DSc.Slider label="End" min={0} max={Math.max(1, Math.floor(dur / 2))} value={trimEnd} onChange={(e) => setTrimEnd(+e.target.value)} suffix="s" />
             </CtCard>
             <CtCard title="Remove filler words" hint="Needs transcription.">
-              <div style={{ fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface-sunken)", padding: "9px 12px", borderRadius: 10 }}>Available once transcription is switched on for your account.</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface-sunken)", padding: "9px 12px", borderRadius: 10 }}>Available after this take is transcribed. Use the Captions tab.</div>
             </CtCard>
             <button className="pd-tap" onClick={() => setEditMap(true)} style={{ width: "100%", height: 48, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 14.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><Icon name="redo" size={16} color="var(--text-secondary)" />Review removed sections</button>
           </div>
@@ -333,13 +434,13 @@ function CleanTakeScreen({ app }) {
                     <DSc.Button variant="secondary" size="md" onClick={() => ctDownloadText(ctVTT(segs), "captions.vtt")}>Export VTT</DSc.Button>
                   </div>
                 ) : <p style={{ marginTop: 12, fontSize: 13, color: "var(--text-muted)" }}>This transcript has no timing, so timed captions are not available. Re-transcribe to get SRT/VTT.</p>}
-                <p style={{ marginTop: 12, fontSize: 12.5, color: "var(--text-muted)" }}>Burned-in captions arrive with video export rendering.</p>
+                <p style={{ marginTop: 12, fontSize: 12.5, color: "var(--text-muted)" }}>To burn captions into the video, use Captioned video in Export.</p>
               </>
             ) : (
               <div style={{ background: "var(--surface-elevated)", borderRadius: 14, padding: 16 }}>
                 <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>Captions need transcription</div>
                 <button className="pd-tap" onClick={transcribeTake} disabled={transcribing} style={{ marginTop: 10, height: 44, padding: "0 18px", borderRadius: 12, border: "none", background: "var(--accent-primary)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{transcribing ? "Transcribing…" : "Transcribe this take"}</button>
-                <p style={{ marginTop: 10, fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5 }}>Pause cleanup works now. Transcribe this take to generate captions (needs AI switched on for your account).</p>
+                <p style={{ marginTop: 10, fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5 }}>Pause cleanup works now. Transcribe this take to generate captions. Transcription needs AI to be switched on for this site.</p>
               </div>
             )}
           </div>
@@ -347,7 +448,7 @@ function CleanTakeScreen({ app }) {
 
         {tab === "Style" && (
           <div style={{ paddingTop: 10, display: "flex", flexDirection: "column", gap: 18 }}>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Adjustments preview live. They are baked in when video export rendering is connected.</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Adjustments show in the preview straight away and are applied to the exported video.</p>
             <Field label="Brightness"><DSc.Slider min={70} max={130} value={style.b} onChange={(e) => setStyle((s) => ({ ...s, b: +e.target.value }))} suffix="%" /></Field>
             <Field label="Contrast"><DSc.Slider min={70} max={130} value={style.c} onChange={(e) => setStyle((s) => ({ ...s, c: +e.target.value }))} suffix="%" /></Field>
             <Field label="Saturation"><DSc.Slider min={50} max={150} value={style.s} onChange={(e) => setStyle((s) => ({ ...s, s: +e.target.value }))} suffix="%" /></Field>
@@ -370,6 +471,8 @@ function CleanTakeScreen({ app }) {
         )}
       </ScrollArea>
 
+  </>);
+  const actions = (<>
       {/* Action bar: one primary Save; destructive + secondary actions live behind More.
           It is a normal flex row under the controls panel, not an overlay, so it can
           never sit on top of an editing control. */}
@@ -378,13 +481,59 @@ function CleanTakeScreen({ app }) {
         <DSc.Button variant="primary" size="lg" fullWidth onClick={save} iconLeft={<Icon name="check" size={18} color="#fff" />}>Save Clean Take</DSc.Button>
       </div>
 
-      {editMap && <EditMapSheet dur={dur} removed={removed} restored={restored} onToggle={(id) => setRestored((r) => ({ ...r, [id]: !r[id] }))} pauses={ctPauseDecisions(silences, preset)} onClose={() => setEditMap(false)} />}
+  </>);
+  const overlays = (<>
+      {editMap && <EditMapSheet dur={dur} removed={removed} restored={restored} onToggle={(id) => setRestored((r) => ({ ...r, [id]: !r[id] }))} pauses={ctPauseDecisions(silences, preset)} onClose={() => setEditMap(false)} wide={wide} />}
       {moreOpen && <CtMoreSheet
+        wide={wide}
         onClose={() => setMoreOpen(false)}
         onReset={() => { setPreset("Balanced"); setSpeed("Normal"); setTrimStart(0); setTrimEnd(0); setRestored({}); setStyle({ b: 100, c: 100, s: 100 }); setMoreOpen(false); app.toast("Clean Take reset"); }}
         onDownload={url ? () => { download(); setMoreOpen(false); } : null}
         onDelete={async () => { setMoreOpen(false); await del(); }}
       />}
+  </>);
+
+  // Desktop editor: large preview and edit map on the left, tools in a panel on the right.
+  // Same state, same controls and same export code as the phone layout below.
+  if (wide) return (
+    <Screen>
+      <div data-testid="ct-desktop" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
+        <div style={{ flexShrink: 0, height: 60, display: "flex", alignItems: "center", gap: 12, padding: "0 18px", borderBottom: "1px solid var(--border-subtle)" }}>
+          <button onClick={app.back} className="pd-tap" aria-label="Back" data-testid="nav-back" style={iconBtn}><Icon name="back" size={22} color="var(--text-primary)" /></button>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(take && take.title) || "Take"}</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: "0.08em", color: "var(--text-muted)" }}>CLEAN TAKE</div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <span data-testid="ct-save-status" data-dirty={dirty ? "1" : "0"} style={{ fontSize: 12.5, color: dirty ? "var(--text-secondary)" : "var(--text-muted)" }}>{dirty ? "Unsaved changes" : (take && take.clean ? "Saved on this device" : "No edits yet")}</span>
+          <button className="pd-tap" data-testid="ct-save" onClick={save} disabled={!dirty} style={{ height: 38, padding: "0 16px", borderRadius: 11, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 13.5, fontWeight: 600, cursor: dirty ? "pointer" : "default", opacity: dirty ? 1 : 0.5, fontFamily: "var(--font-sans)" }}>Save</button>
+          <button className="pd-tap" data-testid="ct-export" onClick={() => setTab("Export")} style={{ height: 38, padding: "0 18px", borderRadius: 11, border: "none", background: "var(--accent-primary)", color: "#fff", fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)" }}>Export</button>
+          <button className="pd-tap" onClick={() => setMoreOpen(true)} aria-label="More actions" style={iconBtn}><Icon name="more" size={22} color="var(--text-secondary)" /></button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+          <div data-testid="ct-main" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", padding: "18px 20px 16px", gap: 14 }}>
+            {previewBlock}
+            {hasVideo && <CtTimeline vref={vref} dur={dur} removed={removed} pauses={allPauses} restored={restored} onToggle={toggleRestore} trimStart={trimStart} trimEnd={trimEnd} cleanDur={cleanDur} />}
+          </div>
+          <div data-testid="ct-side" style={{ flexShrink: 0, width: "clamp(340px, 30vw, 420px)", borderLeft: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", minHeight: 0, background: "var(--bg-primary)" }}>
+            {tabsBar}
+            {panel}
+          </div>
+        </div>
+      </div>
+      {overlays}
+    </Screen>
+  );
+
+  return (
+    <Screen>
+      <NavHeader onBack={app.back} title="Clean Take" action={hasVideo ? <button className="pd-tap" style={iconBtn} onClick={download}><Icon name="download" size={19} color="var(--text-secondary)" /></button> : null} />
+
+      {previewBlock}
+      {tabsBar}
+      {panel}
+      {actions}
+      {overlays}
     </Screen>
   );
 }
@@ -403,15 +552,15 @@ function CtCard({ title, hint, children }) {
 const ctMiniBtn = { flex: 1, height: 40, borderRadius: 11, border: "1px solid var(--border-default)", background: "var(--surface-sunken)", color: "var(--text-primary)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-sans)" };
 
 // Bottom sheet for secondary + destructive actions, so Delete is not glued next to Save.
-function CtMoreSheet({ onClose, onReset, onDownload, onDelete }) {
+function CtMoreSheet({ onClose, onReset, onDownload, onDelete, wide }) {
   const row = (label, onClick, danger) => (
     <button className="pd-tap" onClick={onClick} style={{ width: "100%", textAlign: "left", height: 54, padding: "0 16px", borderRadius: 14, border: "none", background: "var(--surface-elevated)", color: danger ? "var(--recording)" : "var(--text-primary)", fontSize: 15.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
       <Icon name={danger ? "trash" : label === "Reset Clean Take" ? "redo" : "download"} size={18} color={danger ? "var(--recording)" : "var(--text-secondary)"} />{label}
     </button>
   );
   return (
-    <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 55, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-end" }}>
-      <div onClick={(e) => e.stopPropagation()} className="pd-push" style={{ width: "100%", background: "var(--bg-secondary)", borderTopLeftRadius: 22, borderTopRightRadius: 22, border: "1px solid var(--border-default)", borderBottom: "none", padding: "14px 16px calc(18px + env(safe-area-inset-bottom, 22px))" }}>
+    <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 55, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: wide ? "center" : "flex-end", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="More actions" className="pd-push" style={{ width: "100%", maxWidth: wide ? 440 : undefined, background: "var(--bg-secondary)", borderTopLeftRadius: 22, borderTopRightRadius: 22, borderBottomLeftRadius: wide ? 22 : 0, borderBottomRightRadius: wide ? 22 : 0, border: "1px solid var(--border-default)", borderBottom: wide ? "1px solid var(--border-default)" : "none", padding: "14px 16px calc(18px + env(safe-area-inset-bottom, 22px))" }}>
         <div style={{ width: 40, height: 5, borderRadius: 9, background: "var(--ink-600)", margin: "0 auto 16px" }} />
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {onDownload && row("Download original", onDownload)}
@@ -439,11 +588,11 @@ function ExportRow({ label, sub, ready, pending, note, onClick }) {
   );
 }
 
-function EditMapSheet({ dur, removed, restored, onToggle, pauses, onClose }) {
+function EditMapSheet({ dur, removed, restored, onToggle, pauses, onClose, wide }) {
   const segs = ctMerge(removed);
   return (
-    <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-end" }}>
-      <div onClick={(e) => e.stopPropagation()} className="pd-push" style={{ width: "100%", background: "var(--bg-secondary)", borderTopLeftRadius: 22, borderTopRightRadius: 22, border: "1px solid var(--border-default)", borderBottom: "none", padding: "14px 20px calc(20px + env(safe-area-inset-bottom, 22px))", maxHeight: "70%", overflowY: "auto" }} >
+    <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: wide ? "center" : "flex-end", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Edit Map" className="pd-push" style={{ width: "100%", maxWidth: wide ? 560 : undefined, background: "var(--bg-secondary)", borderTopLeftRadius: 22, borderTopRightRadius: 22, borderBottomLeftRadius: wide ? 22 : 0, borderBottomRightRadius: wide ? 22 : 0, border: "1px solid var(--border-default)", borderBottom: wide ? "1px solid var(--border-default)" : "none", padding: "14px 20px calc(20px + env(safe-area-inset-bottom, 22px))", maxHeight: "70%", overflowY: "auto" }} >
         <div style={{ width: 40, height: 5, borderRadius: 9, background: "var(--ink-600)", margin: "0 auto 14px" }} />
         <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 }}>Edit Map</div>
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "0 0 14px" }}>Green is kept, red is removed. Tap a removed part to restore it.</p>

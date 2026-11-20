@@ -231,6 +231,20 @@ const PDsvc = {
   async signOut(){ if(_sb) await _sb.auth.signOut(); },
 };
 
+// True on desktop-sized windows. Same breakpoint the site shell uses (860px).
+const PD_WIDE_QUERY = '(min-width: 861px)';
+function usePdWide() {
+  const [w, setW] = React.useState(() => { try { return window.matchMedia(PD_WIDE_QUERY).matches; } catch (e) { return false; } });
+  React.useEffect(() => {
+    let mq; try { mq = window.matchMedia(PD_WIDE_QUERY); } catch (e) { return; }
+    const h = (e) => setW(e.matches);
+    mq.addEventListener ? mq.addEventListener('change', h) : mq.addListener(h);
+    setW(mq.matches);
+    return () => { mq.removeEventListener ? mq.removeEventListener('change', h) : mq.removeListener(h); };
+  }, []);
+  return w;
+}
+
 const PDDataCtx = React.createContext(null);
 function DataProvider({ children }) {
   const [st,setSt]=React.useState({loading:true,user:null,plan:'free',scripts:[],takes:[]});
@@ -248,6 +262,6 @@ function useData(){ return React.useContext(PDDataCtx)||{loading:true,user:null,
 
 Object.assign(window, {
   Icon, Eyebrow, Screen, ScrollArea, LargeTitle, NavHeader, RoundBtn, CameraView,
-  iconBtn, TOP_INSET, TAB_H, PDsvc, DataProvider, useData, pdLoadPrefs, pdSavePrefs,
+  iconBtn, TOP_INSET, TAB_H, PDsvc, DataProvider, useData, pdLoadPrefs, pdSavePrefs, usePdWide,
   PromptCharacter: window.PromptDropDesignSystem_82c6c3.PromptCharacter,
 });
