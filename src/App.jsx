@@ -76,15 +76,10 @@ function AppLoader() {
   );
 }
 
-// Guest access is removed: every app route requires an account. Auth must resolve
-// before any content renders, so users never see a Guest state first.
-// ONE cloud-backed app on every device (the /m experience) so the same account
-// always shows the same scripts and content on desktop and mobile.
+// The app is open to everyone: no account is needed to write a script, prompt or record.
+// Without an account, scripts and takes are kept on the device. Signing in is optional
+// (Account tab inside the app) and adds cloud sync for scripts.
 function AppArea() {
-  const { isSignedIn, loading } = useAuth();
-  const { pathname, search } = useLocation();
-  if (loading) return <AppLoader />;
-  if (!isSignedIn) return <Navigate to={`/welcome?next=${encodeURIComponent(pathname + search)}`} replace />;
   return <MobileApp />;
 }
 

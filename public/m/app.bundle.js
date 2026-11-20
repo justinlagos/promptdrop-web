@@ -479,6 +479,29 @@ async function _idbDel(id) {
     t.onerror = () => rej(t.error);
   });
 }
+const PD_LOCAL_KEY = "pd.localScripts";
+function _lsAll() {
+  try {
+    const a = JSON.parse(localStorage.getItem(PD_LOCAL_KEY) || "[]");
+    return Array.isArray(a) ? a : [];
+  } catch (e) {
+    return [];
+  }
+}
+function _lsSave(a) {
+  try {
+    localStorage.setItem(PD_LOCAL_KEY, JSON.stringify(a));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function _isLocalId(id) {
+  return typeof id === "string" && id.indexOf("local-") === 0;
+}
+function _byUpdated(a, b) {
+  return new Date(b.updated_at || 0) - new Date(a.updated_at || 0);
+}
 const PDsvc = {
   sb: _sb,
   FN: PD_FN,
@@ -505,23 +528,48 @@ const PDsvc = {
     return ["active", "trialing", "past_due"].includes(data.status) ? data.plan : "free";
   },
   async scripts() {
-    if (!_sb) return [];
-    const { data, error } = await _sb.from("scripts").select("id,title,body,updated_at").order("updated_at", { ascending: false });
-    return error ? [] : data || [];
+    const local = _lsAll();
+    let cloud = [];
+    if (_sb) {
+      const { data: s } = await _sb.auth.getSession();
+      if (s && s.session) {
+        const { data, error } = await _sb.from("scripts").select("id,title,body,updated_at").order("updated_at", { ascending: false });
+        cloud = error ? [] : data || [];
+      }
+    }
+    return cloud.concat(local).sort(_byUpdated);
   },
   async createScript(title, body) {
-    if (!_sb) return null;
-    const { data: u } = await _sb.auth.getUser();
-    if (!(u == null ? void 0 : u.user)) return null;
-    const { data, error } = await _sb.from("scripts").insert({ user_id: u.user.id, title: title || "Untitled", body: body || "" }).select().single();
-    return error ? null : data;
+    let uid = null;
+    if (_sb) {
+      const { data: s } = await _sb.auth.getSession();
+      uid = s && s.session && s.session.user && s.session.user.id || null;
+    }
+    if (uid) {
+      const { data, error } = await _sb.from("scripts").insert({ user_id: uid, title: title || "Untitled", body: body || "" }).select().single();
+      return error ? null : data;
+    }
+    const row = { id: "local-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), title: title || "Untitled", body: body || "", updated_at: (/* @__PURE__ */ new Date()).toISOString() };
+    const all = _lsAll();
+    all.unshift(row);
+    return _lsSave(all) ? row : null;
   },
   async updateScript(id, patch) {
-    if (!_sb || !id) return;
+    if (!id) return;
+    if (_isLocalId(id)) {
+      _lsSave(_lsAll().map((r) => r.id === id ? { ...r, ...patch, updated_at: (/* @__PURE__ */ new Date()).toISOString() } : r));
+      return;
+    }
+    if (!_sb) return;
     await _sb.from("scripts").update({ ...patch, updated_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", id);
   },
   async deleteScript(id) {
-    if (!_sb || !id) return;
+    if (!id) return;
+    if (_isLocalId(id)) {
+      _lsSave(_lsAll().filter((r) => r.id !== id));
+      return;
+    }
+    if (!_sb) return;
     await _sb.from("scripts").delete().eq("id", id);
   },
   takes: _idbAll,
@@ -587,7 +635,7 @@ function DataProvider({ children }) {
   const reload = React.useCallback(async () => {
     const user = await PDsvc.getUser();
     const plan = user ? await PDsvc.plan(user.id) : "free";
-    const scripts = user ? await PDsvc.scripts() : [];
+    const scripts = await PDsvc.scripts();
     let takes = [];
     try {
       takes = await PDsvc.takes();
@@ -652,7 +700,7 @@ function LibraryScreen({ app }) {
       title: "Library",
       trailing: /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => app.nav("script", { id: null }), style: { width: 44, height: 44, borderRadius: 999, border: "none", background: "var(--accent-primary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" } }, /* @__PURE__ */ React.createElement(Icon, { name: "plus", size: 22, color: "#fff" }))
     }
-  ), /* @__PURE__ */ React.createElement("div", { style: { padding: "4px 20px 0" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, background: "var(--surface-elevated)", border: "none", borderRadius: 12, padding: "0 12px", height: 42 } }, /* @__PURE__ */ React.createElement(Icon, { name: "search", size: 18, color: "var(--text-muted)" }), /* @__PURE__ */ React.createElement("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: "Search scripts", style: { flex: 1, background: "none", border: "none", outline: "none", color: "var(--text-primary)", fontSize: 15, fontFamily: "var(--font-sans)" } }))), /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 20px 4px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", background: "var(--surface-sunken)", borderRadius: 10, padding: 3, gap: 2 } }, ["Scripts", "Takes"].map((o) => /* @__PURE__ */ React.createElement("button", { key: o, onClick: () => setSeg(o), className: "pd-tap", style: { flex: 1, height: 34, borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 14, fontWeight: 600, background: seg === o ? "var(--surface-raised)" : "transparent", color: seg === o ? "var(--text-primary)" : "var(--text-muted)", boxShadow: seg === o ? "var(--shadow-subtle)" : "none" } }, o)))), seg === "Scripts" && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 20px 0" } }, scripts.map((s, i) => /* @__PURE__ */ React.createElement(ScriptRow, { key: s.id, s, last: i === scripts.length - 1, onOpen: () => app.nav("script", { id: s.id }) })), scripts.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "48px 20px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, color: "var(--text-secondary)" } }, "No scripts yet."), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 4, fontSize: 13, color: "var(--text-muted)" } }, "Tap + to write your first one. It syncs to your account."))), seg === "Takes" && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 20px 0" } }, takes.map((t, i) => /* @__PURE__ */ React.createElement(TakeRow, { key: t.id, t, last: i === takes.length - 1, onOpen: () => app.nav("takeReview", { id: t.id }) })), takes.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "48px 20px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, color: "var(--text-secondary)" } }, "No takes yet."), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 4, fontSize: 13, color: "var(--text-muted)" } }, "Record one from a script and it appears here, on this device.")))));
+  ), /* @__PURE__ */ React.createElement("div", { style: { padding: "4px 20px 0" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, background: "var(--surface-elevated)", border: "none", borderRadius: 12, padding: "0 12px", height: 42 } }, /* @__PURE__ */ React.createElement(Icon, { name: "search", size: 18, color: "var(--text-muted)" }), /* @__PURE__ */ React.createElement("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: "Search scripts", style: { flex: 1, background: "none", border: "none", outline: "none", color: "var(--text-primary)", fontSize: 15, fontFamily: "var(--font-sans)" } }))), /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 20px 4px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", background: "var(--surface-sunken)", borderRadius: 10, padding: 3, gap: 2 } }, ["Scripts", "Takes"].map((o) => /* @__PURE__ */ React.createElement("button", { key: o, onClick: () => setSeg(o), className: "pd-tap", style: { flex: 1, height: 34, borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 14, fontWeight: 600, background: seg === o ? "var(--surface-raised)" : "transparent", color: seg === o ? "var(--text-primary)" : "var(--text-muted)", boxShadow: seg === o ? "var(--shadow-subtle)" : "none" } }, o)))), seg === "Scripts" && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 20px 0" } }, scripts.map((s, i) => /* @__PURE__ */ React.createElement(ScriptRow, { key: s.id, s, last: i === scripts.length - 1, onOpen: () => app.nav("script", { id: s.id }) })), scripts.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "48px 20px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, color: "var(--text-secondary)" } }, "No scripts yet."), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 4, fontSize: 13, color: "var(--text-muted)" } }, "Tap + to write your first one. It is saved on this device."))), seg === "Takes" && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 20px 0" } }, takes.map((t, i) => /* @__PURE__ */ React.createElement(TakeRow, { key: t.id, t, last: i === takes.length - 1, onOpen: () => app.nav("takeReview", { id: t.id }) })), takes.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "48px 20px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, color: "var(--text-secondary)" } }, "No takes yet."), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 4, fontSize: 13, color: "var(--text-muted)" } }, "Record one from a script and it appears here, on this device.")))));
 }
 const REWRITES = ["Make punchier", "Shorten", "More conversational", "Warm up the intro"];
 function ScriptScreen({ app }) {
@@ -1822,16 +1870,17 @@ function Row({ icon, label, value, onClick, last, control }) {
 const PLAN_NAME = { free: "Free", creator_pro: "Creator Pro", studio_pro: "Studio Pro" };
 function AccountScreen({ app }) {
   const pd = useData();
+  const guest = !pd.user;
   const user = pd.user || {};
-  const email = user.email || "";
-  const name = user.user_metadata && user.user_metadata.display_name || (email ? email.split("@")[0] : "You");
+  const email = guest ? "Scripts and takes are saved on this device" : user.email || "";
+  const name = guest ? "Guest" : user.user_metadata && user.user_metadata.display_name || (email ? email.split("@")[0] : "You");
   const initials = (name || "Y").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-  const planName = PLAN_NAME[pd.plan] || "Free";
-  return /* @__PURE__ */ React.createElement(Screen, null, /* @__PURE__ */ React.createElement(ScrollArea, null, /* @__PURE__ */ React.createElement(LargeTitle, { title: "Account" }), /* @__PURE__ */ React.createElement("div", { style: { padding: "4px 20px 0" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14, padding: "16px 16px", background: "var(--surface-elevated)", border: "none", borderRadius: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 52, height: 52, borderRadius: 999, background: "var(--blue-600)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontSize: 17, fontWeight: 600, color: "#fff" } }, initials), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "var(--text-primary)" } }, name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, email)), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: "0.1em", color: "var(--text-muted)", border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 7px" } }, planName.toUpperCase())), pd.plan === "free" && /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => app.nav("upgrade"), style: { width: "100%", textAlign: "left", marginTop: 12, cursor: "pointer", border: "none", borderRadius: 18, padding: 16, background: "var(--surface-elevated)", display: "flex", alignItems: "center", gap: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 42, height: 42, borderRadius: 12, background: "var(--blue-tint)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(Icon, { name: "zap", size: 20, color: "var(--accent-primary)" })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600, color: "var(--text-primary)" } }, "Upgrade to Studio Pro"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--text-muted)" } }, "Unlimited takes, meetings, AI notes")), /* @__PURE__ */ React.createElement(Icon, { name: "chevronR", size: 20, color: "var(--ink-600)" })), /* @__PURE__ */ React.createElement(Group, { header: "Recording" }, /* @__PURE__ */ React.createElement(Row, { icon: "video", label: "Camera", value: "Front" }), /* @__PURE__ */ React.createElement(Row, { icon: "mic", label: "Microphone", value: "Device mic" }), /* @__PURE__ */ React.createElement(Row, { icon: "gauge", label: "Default speed", value: "142 wpm", last: true })), /* @__PURE__ */ React.createElement(Group, { header: "Privacy & trust" }, /* @__PURE__ */ React.createElement(Row, { icon: "shield", label: "Consent & recording", onClick: () => {
+  const planName = guest ? "No account" : PLAN_NAME[pd.plan] || "Free";
+  return /* @__PURE__ */ React.createElement(Screen, null, /* @__PURE__ */ React.createElement(ScrollArea, null, /* @__PURE__ */ React.createElement(LargeTitle, { title: "Account" }), /* @__PURE__ */ React.createElement("div", { style: { padding: "4px 20px 0" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14, padding: "16px 16px", background: "var(--surface-elevated)", border: "none", borderRadius: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 52, height: 52, borderRadius: 999, background: "var(--blue-600)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontSize: 17, fontWeight: 600, color: "#fff" } }, initials), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "var(--text-primary)" } }, name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, email)), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: "0.1em", color: "var(--text-muted)", border: "1px solid var(--border-default)", borderRadius: 6, padding: "3px 7px" } }, planName.toUpperCase())), !guest && pd.plan === "free" && /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => app.nav("upgrade"), style: { width: "100%", textAlign: "left", marginTop: 12, cursor: "pointer", border: "none", borderRadius: 18, padding: 16, background: "var(--surface-elevated)", display: "flex", alignItems: "center", gap: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 42, height: 42, borderRadius: 12, background: "var(--blue-tint)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(Icon, { name: "zap", size: 20, color: "var(--accent-primary)" })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600, color: "var(--text-primary)" } }, "Upgrade to Studio Pro"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--text-muted)" } }, "Unlimited takes, meetings, AI notes")), /* @__PURE__ */ React.createElement(Icon, { name: "chevronR", size: 20, color: "var(--ink-600)" })), /* @__PURE__ */ React.createElement(Group, { header: "Recording" }, /* @__PURE__ */ React.createElement(Row, { icon: "video", label: "Camera", value: "Front" }), /* @__PURE__ */ React.createElement(Row, { icon: "mic", label: "Microphone", value: "Device mic" }), /* @__PURE__ */ React.createElement(Row, { icon: "gauge", label: "Default speed", value: "142 wpm", last: true })), /* @__PURE__ */ React.createElement(Group, { header: "Privacy & trust" }, /* @__PURE__ */ React.createElement(Row, { icon: "shield", label: "Consent & recording", onClick: () => {
     location.href = "/acceptable-use";
   } }), /* @__PURE__ */ React.createElement(Row, { icon: "download", label: "Privacy policy", onClick: () => {
     location.href = "/privacy";
-  }, last: true })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20 } }, /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: async () => {
+  }, last: true })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20 } }, guest ? /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => app.nav("signin"), style: { width: "100%", padding: "14px", background: "var(--surface-elevated)", border: "none", borderRadius: 14, color: "var(--accent-primary)", fontSize: 15, fontWeight: 600, cursor: "pointer" } }, "Sign in to sync across devices (optional)") : /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: async () => {
     await pd.svc.signOut();
     pd.reload();
   }, style: { width: "100%", padding: "14px", background: "var(--surface-elevated)", border: "none", borderRadius: 14, color: "var(--error)", fontSize: 15, fontWeight: 600, cursor: "pointer" } }, "Sign out")), /* @__PURE__ */ React.createElement("p", { style: { textAlign: "center", margin: "16px 0 0", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-600)", letterSpacing: "0.05em" } }, "PROMPTDROP"))));
@@ -1852,9 +1901,9 @@ function UpgradeScreen({ app }) {
 Object.assign(window, { OnboardingScreen, AccountScreen, UpgradeScreen });
 
 ;/* app/app.jsx */
-const FULLSCREEN = { script: 1, recordSetup: 1, takeReview: 1, meeting: 1, upgrade: 1 };
+const FULLSCREEN = { signin: 1, script: 1, recordSetup: 1, takeReview: 1, meeting: 1, upgrade: 1 };
 const ROOTS = { library: LibraryScreen, meetings: MeetingsScreen, account: AccountScreen };
-const PUSHED = { script: ScriptScreen, recordSetup: RecordSetupScreen, takeReview: CleanTakeScreen, meeting: MeetingDetailScreen, upgrade: UpgradeScreen };
+const PUSHED = { signin: SignInScreen, script: ScriptScreen, recordSetup: RecordSetupScreen, takeReview: CleanTakeScreen, meeting: MeetingDetailScreen, upgrade: UpgradeScreen };
 const TABS = [
   { id: "library", label: "Library", icon: "library" },
   { id: "record", label: "Record", icon: "record" },
@@ -1869,7 +1918,7 @@ function TabBar({ tab, onTab, onRecord }) {
   }));
 }
 const linesFromBody = (b) => b && b.trim() ? b.split(/\n\n+/).map((l) => l.trim()).filter(Boolean) : [];
-function AuthScreen({ onDone }) {
+function AuthScreen({ onDone, onBack }) {
   const [mode, setMode] = React.useState("signin");
   const [email, setEmail] = React.useState("");
   const [pw, setPw] = React.useState("");
@@ -1898,13 +1947,19 @@ function AuthScreen({ onDone }) {
     }
     onDone && onDone();
   }
-  return /* @__PURE__ */ React.createElement(Screen, null, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0, display: "flex", flexDirection: "column", padding: "0 26px", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h1", { style: { margin: 0, fontSize: 30, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text-primary)" } }, mode === "signin" ? "Welcome back" : "Create your account"), /* @__PURE__ */ React.createElement("p", { style: { margin: "8px 0 0", fontSize: 15, color: "var(--text-secondary)" } }, "Sync your scripts and plan across devices.")), mode === "signup" && /* @__PURE__ */ React.createElement("input", { style: inputStyle, placeholder: "Your name", value: name, onChange: (e) => setName(e.target.value) }), /* @__PURE__ */ React.createElement("input", { style: inputStyle, type: "email", placeholder: "you@example.com", value: email, onChange: (e) => setEmail(e.target.value) }), /* @__PURE__ */ React.createElement("input", { style: inputStyle, type: "password", placeholder: "Password (6+ characters)", value: pw, onChange: (e) => setPw(e.target.value) }), mode === "signup" && /* @__PURE__ */ React.createElement("label", { style: { display: "flex", gap: 9, alignItems: "flex-start", fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.45, margin: "2px 2px 12px" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: agree, onChange: (e) => setAgree(e.target.checked), style: { width: 18, height: 18, marginTop: 1, flexShrink: 0 } }), /* @__PURE__ */ React.createElement("span", null, "I agree to the Terms and Privacy Policy, and I am responsible for getting consent before recording anyone.")), msg && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--accent-primary)", marginBottom: 10, textAlign: "center" } }, msg), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: go, disabled: busy, style: { height: 52, borderRadius: 14, border: "none", background: "var(--accent-primary)", color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer" } }, busy ? "Working\u2026" : mode === "signin" ? "Sign in" : "Create account"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginTop: 16, fontSize: 14, color: "var(--text-secondary)" } }, mode === "signin" ? /* @__PURE__ */ React.createElement("span", null, "New here? ", /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => {
+  return /* @__PURE__ */ React.createElement(Screen, null, onBack && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 5 } }, /* @__PURE__ */ React.createElement(NavHeader, { onBack, transparent: true })), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0, display: "flex", flexDirection: "column", padding: "0 26px", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginBottom: 24 } }, /* @__PURE__ */ React.createElement("h1", { style: { margin: 0, fontSize: 30, fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text-primary)" } }, mode === "signin" ? "Welcome back" : "Create your account"), /* @__PURE__ */ React.createElement("p", { style: { margin: "8px 0 0", fontSize: 15, color: "var(--text-secondary)" } }, "Sync your scripts and plan across devices.")), mode === "signup" && /* @__PURE__ */ React.createElement("input", { style: inputStyle, placeholder: "Your name", value: name, onChange: (e) => setName(e.target.value) }), /* @__PURE__ */ React.createElement("input", { style: inputStyle, type: "email", placeholder: "you@example.com", value: email, onChange: (e) => setEmail(e.target.value) }), /* @__PURE__ */ React.createElement("input", { style: inputStyle, type: "password", placeholder: "Password (6+ characters)", value: pw, onChange: (e) => setPw(e.target.value) }), mode === "signup" && /* @__PURE__ */ React.createElement("label", { style: { display: "flex", gap: 9, alignItems: "flex-start", fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.45, margin: "2px 2px 12px" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: agree, onChange: (e) => setAgree(e.target.checked), style: { width: 18, height: 18, marginTop: 1, flexShrink: 0 } }), /* @__PURE__ */ React.createElement("span", null, "I agree to the Terms and Privacy Policy, and I am responsible for getting consent before recording anyone.")), msg && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--accent-primary)", marginBottom: 10, textAlign: "center" } }, msg), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: go, disabled: busy, style: { height: 52, borderRadius: 14, border: "none", background: "var(--accent-primary)", color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer" } }, busy ? "Working\u2026" : mode === "signin" ? "Sign in" : "Create account"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginTop: 16, fontSize: 14, color: "var(--text-secondary)" } }, mode === "signin" ? /* @__PURE__ */ React.createElement("span", null, "New here? ", /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => {
     setMode("signup");
     setMsg(null);
   }, style: { background: "none", border: "none", color: "var(--accent-primary)", fontWeight: 600, cursor: "pointer" } }, "Create an account")) : /* @__PURE__ */ React.createElement("span", null, "Have an account? ", /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => {
     setMode("signin");
     setMsg(null);
   }, style: { background: "none", border: "none", color: "var(--accent-primary)", fontWeight: 600, cursor: "pointer" } }, "Sign in")))));
+}
+function SignInScreen({ app }) {
+  return /* @__PURE__ */ React.createElement(AuthScreen, { onBack: app.back, onDone: () => {
+    app.reload();
+    app.back();
+  } });
 }
 function PromptDropApp() {
   const data = useData();
@@ -1949,7 +2004,6 @@ function PromptDropApp() {
   };
   if (!onboarded) return /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0 } }, /* @__PURE__ */ React.createElement(OnboardingScreen, { app }));
   if (data.loading) return /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0, background: "var(--bg-primary)" } });
-  if (!data.user) return /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0 } }, /* @__PURE__ */ React.createElement(AuthScreen, { onDone: data.reload }));
   const Root = ROOTS[tab] || LibraryScreen;
   const onRecord = () => {
     const s = data.scripts[0];

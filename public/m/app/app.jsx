@@ -1,8 +1,8 @@
 // app.jsx, store + navigation + tab bar for the PromptDrop mobile app (real data).
 
-const FULLSCREEN = { script: 1, recordSetup: 1, takeReview: 1, meeting: 1, upgrade: 1 };
+const FULLSCREEN = { signin: 1, script: 1, recordSetup: 1, takeReview: 1, meeting: 1, upgrade: 1 };
 const ROOTS = { library: LibraryScreen, meetings: MeetingsScreen, account: AccountScreen };
-const PUSHED = { script: ScriptScreen, recordSetup: RecordSetupScreen, takeReview: CleanTakeScreen, meeting: MeetingDetailScreen, upgrade: UpgradeScreen };
+const PUSHED = { signin: SignInScreen, script: ScriptScreen, recordSetup: RecordSetupScreen, takeReview: CleanTakeScreen, meeting: MeetingDetailScreen, upgrade: UpgradeScreen };
 
 const TABS = [
   { id: 'library', label: 'Library', icon: 'library' },
@@ -37,8 +37,9 @@ function TabBar({ tab, onTab, onRecord }) {
 
 const linesFromBody = (b) => (b && b.trim() ? b.split(/\n\n+/).map(l => l.trim()).filter(Boolean) : []);
 
-// Real email + password auth gate, in the design language.
-function AuthScreen({ onDone }) {
+// Optional email + password sign-in, in the design language. The app works without it;
+// signing in only adds cloud sync for scripts.
+function AuthScreen({ onDone, onBack }) {
   const [mode, setMode] = React.useState('signin');
   const [email, setEmail] = React.useState('');
   const [pw, setPw] = React.useState('');
@@ -58,6 +59,7 @@ function AuthScreen({ onDone }) {
   }
   return (
     <Screen>
+      {onBack && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5 }}><NavHeader onBack={onBack} transparent /></div>}
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', padding: '0 26px', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <h1 style={{ margin: 0, fontSize: 30, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--text-primary)' }}>{mode === 'signin' ? 'Welcome back' : 'Create your account'}</h1>
@@ -82,6 +84,10 @@ function AuthScreen({ onDone }) {
       </div>
     </Screen>
   );
+}
+
+function SignInScreen({ app }) {
+  return <AuthScreen onBack={app.back} onDone={() => { app.reload(); app.back(); }} />;
 }
 
 function PromptDropApp() {
@@ -112,7 +118,8 @@ function PromptDropApp() {
 
   if (!onboarded) return <div style={{ position: 'absolute', inset: 0 }}><OnboardingScreen app={app} /></div>;
   if (data.loading) return <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-primary)' }} />;
-  if (!data.user) return <div style={{ position: 'absolute', inset: 0 }}><AuthScreen onDone={data.reload} /></div>;
+  // No sign-in gate: anyone can use the app. Scripts are kept on this device unless
+  // the user chooses to sign in from the Account tab.
 
   const Root = ROOTS[tab] || LibraryScreen;
   const onRecord = () => { const s = data.scripts[0]; app.nav('recordSetup', s ? { id: s.id, title: s.title, lines: linesFromBody(s.body) } : { id: null, title: 'Untitled', lines: [] }); };
