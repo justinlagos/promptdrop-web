@@ -101,11 +101,12 @@ const PLAN_NAME = { free: 'Free', creator_pro: 'Creator Pro', studio_pro: 'Studi
 
 function AccountScreen({ app }) {
   const pd = useData();
+  const guest = !pd.user;
   const user = pd.user || {};
-  const email = user.email || '';
-  const name = (user.user_metadata && user.user_metadata.display_name) || (email ? email.split('@')[0] : 'You');
+  const email = guest ? 'Scripts and takes are saved on this device' : (user.email || '');
+  const name = guest ? 'Guest' : ((user.user_metadata && user.user_metadata.display_name) || (email ? email.split('@')[0] : 'You'));
   const initials = (name || 'Y').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  const planName = PLAN_NAME[pd.plan] || 'Free';
+  const planName = guest ? 'No account' : (PLAN_NAME[pd.plan] || 'Free');
   return (
     <Screen>
       <ScrollArea>
@@ -117,7 +118,7 @@ function AccountScreen({ app }) {
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.1em', color: 'var(--text-muted)', border: '1px solid var(--border-default)', borderRadius: 6, padding: '3px 7px' }}>{planName.toUpperCase()}</span>
           </div>
 
-          {pd.plan === 'free' && (
+          {!guest && pd.plan === 'free' && (
             <button className="pd-tap" onClick={() => app.nav('upgrade')} style={{ width: '100%', textAlign: 'left', marginTop: 12, cursor: 'pointer', border: 'none', borderRadius: 18, padding: 16, background: 'var(--surface-elevated)', display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--blue-tint)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon name="zap" size={20} color="var(--accent-primary)" /></div>
               <div style={{ flex: 1 }}><div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>Upgrade to Studio Pro</div><div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Unlimited takes, meetings, AI notes</div></div>
@@ -136,7 +137,9 @@ function AccountScreen({ app }) {
           </Group>
 
           <div style={{ marginTop: 20 }}>
-            <button className="pd-tap" onClick={async () => { await pd.svc.signOut(); pd.reload(); }} style={{ width: '100%', padding: '14px', background: 'var(--surface-elevated)', border: 'none', borderRadius: 14, color: 'var(--error)', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>Sign out</button>
+            {guest
+              ? <button className="pd-tap" onClick={() => app.nav('signin')} style={{ width: '100%', padding: '14px', background: 'var(--surface-elevated)', border: 'none', borderRadius: 14, color: 'var(--accent-primary)', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>Sign in to sync across devices (optional)</button>
+              : <button className="pd-tap" onClick={async () => { await pd.svc.signOut(); pd.reload(); }} style={{ width: '100%', padding: '14px', background: 'var(--surface-elevated)', border: 'none', borderRadius: 14, color: 'var(--error)', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>Sign out</button>}
           </div>
           <p style={{ textAlign: 'center', margin: '16px 0 0', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-600)', letterSpacing: '0.05em' }}>PROMPTDROP</p>
         </div>

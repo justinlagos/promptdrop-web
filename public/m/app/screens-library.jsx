@@ -70,7 +70,7 @@ function LibraryScreen({ app }) {
             {scripts.length === 0 && (
               <div style={{ textAlign: 'center', padding: '48px 20px' }}>
                 <div style={{ fontSize: 15, color: 'var(--text-secondary)' }}>No scripts yet.</div>
-                <div style={{ marginTop: 4, fontSize: 13, color: 'var(--text-muted)' }}>Tap + to write your first one. It syncs to your account.</div>
+                <div style={{ marginTop: 4, fontSize: 13, color: 'var(--text-muted)' }}>Tap + to write your first one. It is saved on this device.</div>
               </div>
             )}
           </div>

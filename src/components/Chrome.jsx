@@ -31,7 +31,7 @@ export function TopNav() {
         ) : (
           <>
             <button className="btn btn--ghost" onClick={() => openAuth("signin")}>Sign in</button>
-            <Link className="btn btn--primary" to="/welcome">Start free trial</Link>
+            <Link className="btn btn--primary" to="/app">Open the app</Link>
           </>
         )}
       </div>

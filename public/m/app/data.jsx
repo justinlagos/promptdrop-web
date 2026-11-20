@@ -188,15 +188,22 @@ async function _idbGet(id){ const d=await _idb(); return new Promise((res,rej)=>
 async function _idbPut(rec){ const d=await _idb(); return new Promise((res,rej)=>{ const t=d.transaction('recordings','readwrite'); t.objectStore('recordings').put(rec); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); }); }
 async function _idbDel(id){ const d=await _idb(); return new Promise((res,rej)=>{ const t=d.transaction('recordings','readwrite'); t.objectStore('recordings').delete(id); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); }); }
 
+// Device-local scripts: used when nobody is signed in, so the app works with no account.
+const PD_LOCAL_KEY = 'pd.localScripts';
+function _lsAll(){ try{ const a=JSON.parse(localStorage.getItem(PD_LOCAL_KEY)||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+function _lsSave(a){ try{ localStorage.setItem(PD_LOCAL_KEY, JSON.stringify(a)); return true; }catch(e){ return false; } }
+function _isLocalId(id){ return typeof id==='string' && id.indexOf('local-')===0; }
+function _byUpdated(a,b){ return new Date(b.updated_at||0)-new Date(a.updated_at||0); }
+
 const PDsvc = {
   sb: _sb, FN: PD_FN, anon: PD_SUPA_ANON, words: pdWords, durFor: pdDurFor, rel: pdRel, clock: pdClock,
   async token(){ if(!_sb) return null; const {data}=await _sb.auth.getSession(); return data?.session?.access_token||null; },
   async getUser(){ if(!_sb) return null; const {data}=await _sb.auth.getUser(); return data?.user||null; },
   async plan(uid){ if(!_sb||!uid) return 'free'; const {data}=await _sb.from('subscriptions').select('plan,status').eq('user_id',uid).maybeSingle(); if(!data) return 'free'; return ['active','trialing','past_due'].includes(data.status)?data.plan:'free'; },
-  async scripts(){ if(!_sb) return []; const {data,error}=await _sb.from('scripts').select('id,title,body,updated_at').order('updated_at',{ascending:false}); return error?[]:(data||[]); },
-  async createScript(title,body){ if(!_sb) return null; const {data:u}=await _sb.auth.getUser(); if(!u?.user) return null; const {data,error}=await _sb.from('scripts').insert({user_id:u.user.id,title:title||'Untitled',body:body||''}).select().single(); return error?null:data; },
-  async updateScript(id,patch){ if(!_sb||!id) return; await _sb.from('scripts').update({...patch,updated_at:new Date().toISOString()}).eq('id',id); },
-  async deleteScript(id){ if(!_sb||!id) return; await _sb.from('scripts').delete().eq('id',id); },
+  async scripts(){ const local=_lsAll(); let cloud=[]; if(_sb){ const {data:s}=await _sb.auth.getSession(); if(s&&s.session){ const {data,error}=await _sb.from('scripts').select('id,title,body,updated_at').order('updated_at',{ascending:false}); cloud=error?[]:(data||[]); } } return cloud.concat(local).sort(_byUpdated); },
+  async createScript(title,body){ let uid=null; if(_sb){ const {data:s}=await _sb.auth.getSession(); uid=(s&&s.session&&s.session.user&&s.session.user.id)||null; } if(uid){ const {data,error}=await _sb.from('scripts').insert({user_id:uid,title:title||'Untitled',body:body||''}).select().single(); return error?null:data; } const row={id:'local-'+Date.now().toString(36)+Math.random().toString(36).slice(2,8),title:title||'Untitled',body:body||'',updated_at:new Date().toISOString()}; const all=_lsAll(); all.unshift(row); return _lsSave(all)?row:null; },
+  async updateScript(id,patch){ if(!id) return; if(_isLocalId(id)){ _lsSave(_lsAll().map(r=>r.id===id?{...r,...patch,updated_at:new Date().toISOString()}:r)); return; } if(!_sb) return; await _sb.from('scripts').update({...patch,updated_at:new Date().toISOString()}).eq('id',id); },
+  async deleteScript(id){ if(!id) return; if(_isLocalId(id)){ _lsSave(_lsAll().filter(r=>r.id!==id)); return; } if(!_sb) return; await _sb.from('scripts').delete().eq('id',id); },
   takes: _idbAll, getTake: _idbGet, putTake: _idbPut, delTake: _idbDel,
   async transcribe(blob){ try{ const fd=new FormData(); fd.append('file',blob,'rec.webm'); const r=await fetch(PD_FN+'/transcribe',{method:'POST',headers:{Authorization:'Bearer '+PD_SUPA_ANON,apikey:PD_SUPA_ANON},body:fd}); const d=await r.json().catch(()=>({})); if(r.status===503)return{ok:false,msg:'AI is not switched on yet on the server.'}; if(!r.ok||d.error)return{ok:false,msg:d.message||'Transcription failed'}; return{ok:true,text:d.text||'',segments:d.segments||[],words:d.words||[]}; }catch(e){return{ok:false,msg:String(e.message||e)};} },
   async ask(question,context,mode){ try{ const r=await fetch(PD_FN+'/assistant',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+PD_SUPA_ANON,apikey:PD_SUPA_ANON},body:JSON.stringify({question,context,mode:mode||'task'})}); const d=await r.json().catch(()=>({})); if(r.status===503)return{ok:false,msg:'AI is not switched on yet on the server.'}; if(!r.ok||d.error)return{ok:false,msg:d.message||'Request failed'}; return{ok:true,text:d.answer||d.text||''}; }catch(e){return{ok:false,msg:String(e.message||e)};} },
@@ -212,7 +219,7 @@ function DataProvider({ children }) {
   const reload=React.useCallback(async()=>{
     const user=await PDsvc.getUser();
     const plan=user?await PDsvc.plan(user.id):'free';
-    const scripts=user?await PDsvc.scripts():[];
+    const scripts=await PDsvc.scripts();
     let takes=[]; try{ takes=await PDsvc.takes(); }catch(e){}
     setSt({loading:false,user,plan,scripts,takes});
   },[]);

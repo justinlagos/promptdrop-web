@@ -29,11 +29,11 @@ export default function Landing() {
             Read naturally on camera with a floating prompt that stays close to your lens, helps you speak clearly, and keeps your eyes up.
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-            <Link className="btn btn--primary btn--lg" to="/app">{mobile ? "Start free trial" : "Start 7-day free trial"}</Link>
+            <Link className="btn btn--primary btn--lg" to="/app">{mobile ? "Open the app" : "Open the teleprompter"}</Link>
             <DownloadBtn />
           </div>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 16, fontFamily: "var(--font-mono)", letterSpacing: ".02em" }}>
-            {mobile ? "7-day free trial in your browser · no card to start" : "7-day free trial in your browser · no card to start · desktop overlay for meetings"}
+            {mobile ? "Runs in your browser · no sign-up needed" : "Runs in your browser · no sign-up needed · desktop overlay for meetings"}
           </p>
           <div style={{ marginTop: 40 }}><Drop scriptLine="Hi, I’m Justin." /></div>
         </div>
@@ -123,9 +123,9 @@ export default function Landing() {
       {/* FINAL CTA */}
       <section className="block" style={{ textAlign: "center", paddingTop: 0 }}><div className="wrap">
         <h2 style={{ margin: "0 auto" }}>Keep your eyes on the lens.</h2>
-        <p className="lead" style={{ margin: "12px auto 26px" }}>{mobile ? "Start your 7-day free trial in your browser, no install needed." : "Start your 7-day free trial in your browser, or get the desktop app for meetings and presentations."}</p>
+        <p className="lead" style={{ margin: "12px auto 26px" }}>{mobile ? "Open it in your browser. No install, no sign-up." : "Open it in your browser with no sign-up, or get the desktop app for meetings and presentations."}</p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-          <Link className="btn btn--primary btn--lg" to="/app">{mobile ? "Start free trial" : "Start 7-day free trial"}</Link>
+          <Link className="btn btn--primary btn--lg" to="/app">{mobile ? "Open the app" : "Open the teleprompter"}</Link>
           <DownloadBtn />
         </div>
       </div></section>
@@ -169,8 +169,7 @@ function AskCard() {
 }
 
 const FAQ = [
-  ["Is there a free trial?", "Yes. Create an account and you get a 7-day free trial with full access. After the trial, choose Creator Pro or Studio Pro to keep your paid features. Your scripts and takes stay saved either way."],
-  ["Do I need to sign up?", "Yes. PromptDrop is account-based so your scripts, takes and settings sync securely across your devices. Signing up takes a few seconds and starts your 7-day trial."],
+  ["Do I need to sign up?", "No. Open the app and start: write or paste a script, prompt and record. Without an account your scripts and takes are saved on the device you are using. Signing in is optional and syncs your scripts across devices."],
   ["Does it work on mobile?", "Yes, write, paste, prompt, record a selfie take and review on your phone, with large touch controls."],
   ["Does it work with Zoom or Google Meet?", "The Studio Pro desktop overlay floats above Zoom, Meet, Teams, Loom, Riverside, Keynote and PowerPoint."],
   ["Can the prompt stay private during screen sharing?", "Private Prompt Mode attempts to keep the overlay out of supported screen shares and captures. It can't be guaranteed on every app, OS or capture method."],
