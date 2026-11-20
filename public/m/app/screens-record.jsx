@@ -1,20 +1,24 @@
 // screens-record.jsx, Record setup, live prompting + recording, take review. Real camera.
 const DSr = window.PromptDropDesignSystem_82c6c3;
 
-function SettingRow({ children, top }) { return <div style={{ padding: top ? '2px 0 16px' : '16px 0 0' }}>{children}</div>; }
+function SettingRow({ children, top, testid }) { return <div data-testid={testid} style={{ padding: top ? '2px 0 16px' : '16px 0 0' }}>{children}</div>; }
 
 function RecordSetupScreen({ app }) {
   const p = app.params;
   const lines = (p.lines && p.lines.length) ? p.lines : ['Your script is empty. Add lines in the editor, or just press record.'];
-  const [speed, setSpeed] = React.useState(142);
-  const [font, setFont] = React.useState(40);
-  const [pos, setPos] = React.useState('Centre');
-  const [autoRec, setAutoRec] = React.useState(true);
-  const [follow, setFollow] = React.useState(false);
+  // Start from the last-used preferences, not hardcoded defaults, and save every change.
+  const saved = React.useMemo(() => pdLoadPrefs(), []);
+  const [speed, setSpeed] = React.useState(saved.speed);
+  const [font, setFont] = React.useState(saved.font);
+  const [pos, setPos] = React.useState(saved.pos);
+  const [autoRec, setAutoRec] = React.useState(saved.autoRec);
+  const [follow, setFollow] = React.useState(saved.follow);
   const [sheet, setSheet] = React.useState(true);
+  React.useEffect(() => { pdSavePrefs({ speed, font, pos, autoRec, follow }); }, [speed, font, pos, autoRec, follow]);
 
   return (
     <Screen style={{ background: '#000' }}>
+      <div data-testid="record-setup" data-speed={speed} data-font={font} style={{ display: 'none' }} />
       <CameraView dim={0.12}>
         <div style={{ position: 'absolute', top: 0, left: 8, right: 8, height: 92, background: '#000', borderRadius: '0 0 28px 28px', border: '1px solid var(--promptdrop-border)', borderTop: 'none', boxShadow: '0 18px 40px -16px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 12 }}>
           <div style={{ textAlign: 'center' }}>
@@ -38,8 +42,8 @@ function RecordSetupScreen({ app }) {
             <Eyebrow>{follow ? 'Follow voice' : 'Steady'}</Eyebrow>
           </div>
           <div style={{ marginTop: 14 }}>
-            <SettingRow top><DSr.Slider label="Scroll speed" min={80} max={240} value={speed} suffix=" wpm" onChange={e => setSpeed(+e.target.value)} /></SettingRow>
-            <SettingRow><DSr.Slider label="Font size" min={28} max={64} value={font} suffix="px" onChange={e => setFont(+e.target.value)} /></SettingRow>
+            <SettingRow top testid="prompt-speed"><DSr.Slider label="Scroll speed" min={80} max={240} value={speed} suffix=" wpm" onChange={e => setSpeed(+e.target.value)} /></SettingRow>
+            <SettingRow testid="prompt-font"><DSr.Slider label="Font size" min={28} max={64} value={font} suffix="px" onChange={e => setFont(+e.target.value)} /></SettingRow>
             <SettingRow>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Text alignment</span>
@@ -51,7 +55,7 @@ function RecordSetupScreen({ app }) {
           </div>
         </div>
         <div style={{ padding: '6px 20px calc(16px + env(safe-area-inset-bottom, 22px))', display: 'flex', alignItems: 'center', gap: 14 }}>
-          <button className="pd-tap" onClick={() => app.openLive({ title: p.title, lines, speed, font, pos, autoRec, follow })} style={{ flex: 1, height: 60, borderRadius: 18, border: 'none', cursor: 'pointer', background: autoRec ? 'var(--recording)' : 'var(--accent-primary)', color: '#fff', fontFamily: 'var(--font-sans)', fontSize: 17, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: autoRec ? 'var(--glow-recording)' : 'var(--glow-accent)' }}>
+          <button className="pd-tap" data-testid="record-start" onClick={() => app.openLive({ title: p.title, lines, speed, font, pos, autoRec, follow })} style={{ flex: 1, height: 60, borderRadius: 18, border: 'none', cursor: 'pointer', background: autoRec ? 'var(--recording)' : 'var(--accent-primary)', color: '#fff', fontFamily: 'var(--font-sans)', fontSize: 17, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: autoRec ? 'var(--glow-recording)' : 'var(--glow-accent)' }}>
             <span style={{ width: 14, height: 14, borderRadius: autoRec ? 999 : 4, background: '#fff' }} />
             {autoRec ? 'Record take' : 'Start prompting'}
           </button>
@@ -161,15 +165,15 @@ function LiveSession({ cfg, onExit, onComplete }) {
 
   const Line = ({ i, kind }) => {
     const t = lines[i]; if (!t) return <div style={{ height: 6 }} />;
-    const styles = { cur: { fontSize: Math.min(cfg.font, 40), color: 'var(--tp-current)', fontWeight: 600 }, adj: { fontSize: Math.min(cfg.font - 8, 30), color: 'var(--tp-adjacent)', fontWeight: 500 }, far: { fontSize: Math.min(cfg.font - 14, 24), color: 'var(--tp-far)', fontWeight: 500 } }[kind];
+    const styles = { cur: { fontSize: cfg.font, color: 'var(--tp-current)', fontWeight: 600 }, adj: { fontSize: Math.round(cfg.font * 0.75), color: 'var(--tp-adjacent)', fontWeight: 500 }, far: { fontSize: Math.round(cfg.font * 0.6), color: 'var(--tp-far)', fontWeight: 500 } }[kind];
     const align = cfg.pos === 'Left' ? 'left' : cfg.pos === 'Right' ? 'right' : 'center';
-    return <div style={{ ...styles, opacity: 1, lineHeight: 1.34, letterSpacing: '-0.01em', textAlign: align, transition: 'all .45s ease', padding: '6px 0' }}>{t}</div>;
+    return <div data-testid={'live-line-' + kind} style={{ ...styles, opacity: 1, lineHeight: 1.34, letterSpacing: '-0.01em', textAlign: align, transition: 'all .45s ease', padding: '6px 0' }}>{t}</div>;
   };
 
   const exit = () => { try { streamRef.current && streamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {} onExit(); };
 
   return (
-    <div style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 30, overflow: 'hidden' }}>
+    <div data-testid="live-session" data-phase={phase} data-speed={cfg.speed} data-font={cfg.font} style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 30, overflow: 'hidden' }}>
       {camOk
         ? <video ref={videoRef} playsInline muted style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', filter: `brightness(${1 - dim})` }} />
         : <CameraView dim={dim} />}
@@ -213,7 +217,7 @@ function LiveSession({ cfg, onExit, onComplete }) {
             <button className="pd-tap" onClick={() => setPhase(p => p === 'paused' ? 'prompting' : 'paused')} disabled={phase === 'countdown'} style={{ width: 76, height: 76, borderRadius: 999, border: '4px solid rgba(255,255,255,0.85)', background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: phase === 'countdown' ? 0.4 : 1 }}>
               <Icon name={phase === 'paused' ? 'play' : 'pause'} size={30} color="#fff" />
             </button>
-            <RoundBtn size={56} bg="rgba(255,59,48,0.22)" style={{ borderColor: 'rgba(255,59,48,0.5)' }} onClick={() => setPhase('complete')}><span style={{ width: 20, height: 20, borderRadius: 5, background: 'var(--recording)' }} /></RoundBtn>
+            <RoundBtn size={56} label="Stop and save take" testid="live-stop" bg="rgba(255,59,48,0.22)" style={{ borderColor: 'rgba(255,59,48,0.5)' }} onClick={() => setPhase('complete')}><span style={{ width: 20, height: 20, borderRadius: 5, background: 'var(--recording)' }} /></RoundBtn>
           </div>
           <div style={{ textAlign: 'center', marginTop: 14 }}>
             <button className="pd-tap" onClick={exit} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Close</button>

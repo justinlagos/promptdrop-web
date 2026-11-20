@@ -86,9 +86,9 @@ function Screen({ children, pad = true, style }) {
   );
 }
 
-function ScrollArea({ children, padBottom = TAB_H, style }) {
+function ScrollArea({ children, padBottom = TAB_H, style, testid }) {
   return (
-    <div className="pd-scroll" style={{
+    <div className="pd-scroll" data-testid={testid} style={{
       flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
       WebkitOverflowScrolling: 'touch', paddingBottom: padBottom, ...style,
     }}>{children}</div>
@@ -119,7 +119,7 @@ function NavHeader({ onBack, title, action, transparent }) {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
       background: transparent ? 'transparent' : 'var(--bg-primary)', position: 'relative', zIndex: 4,
     }}>
-      <button onClick={onBack} className="pd-tap" style={iconBtn}>
+      <button onClick={onBack} className="pd-tap" aria-label="Back" data-testid="nav-back" style={iconBtn}>
         <Icon name="back" size={22} color="var(--text-primary)" />
       </button>
       {title && <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)', position: 'absolute', left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' }}>{title}</div>}
@@ -135,9 +135,9 @@ const iconBtn = {
 };
 
 // A round glassy icon button on dark camera surfaces
-function RoundBtn({ onClick, children, size = 52, bg = 'rgba(255,255,255,0.12)', style }) {
+function RoundBtn({ onClick, children, size = 52, bg = 'rgba(255,255,255,0.12)', style, label, testid }) {
   return (
-    <button onClick={onClick} className="pd-tap" style={{
+    <button onClick={onClick} className="pd-tap" aria-label={label} data-testid={testid} style={{
       width: size, height: size, borderRadius: 999, border: '1px solid rgba(255,255,255,0.14)',
       background: bg, backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
@@ -195,6 +195,24 @@ function _lsSave(a){ try{ localStorage.setItem(PD_LOCAL_KEY, JSON.stringify(a));
 function _isLocalId(id){ return typeof id==='string' && id.indexOf('local-')===0; }
 function _byUpdated(a,b){ return new Date(b.updated_at||0)-new Date(a.updated_at||0); }
 
+// Prompt preferences. The last values the user chose are the defaults for every later
+// take, script and visit. Never rebuild these from hardcoded values on mount.
+const PD_PREFS_KEY = 'pd.promptPrefs';
+const PD_PREF_DEFAULTS = { speed: 142, font: 40, pos: 'Centre', autoRec: true, follow: false };
+const PD_PREF_RANGE = { speed: [80, 240], font: [28, 64] };
+function _prefNum(v, key){ const r=PD_PREF_RANGE[key]; const n=Number(v); return Number.isFinite(n) ? Math.min(r[1], Math.max(r[0], Math.round(n))) : PD_PREF_DEFAULTS[key]; }
+function pdLoadPrefs(){
+  let raw={}; try{ const p=JSON.parse(localStorage.getItem(PD_PREFS_KEY)||'{}'); if(p&&typeof p==='object') raw=p; }catch(e){}
+  return {
+    speed: raw.speed==null ? PD_PREF_DEFAULTS.speed : _prefNum(raw.speed,'speed'),
+    font: raw.font==null ? PD_PREF_DEFAULTS.font : _prefNum(raw.font,'font'),
+    pos: ['Left','Centre','Right'].includes(raw.pos) ? raw.pos : PD_PREF_DEFAULTS.pos,
+    autoRec: typeof raw.autoRec==='boolean' ? raw.autoRec : PD_PREF_DEFAULTS.autoRec,
+    follow: typeof raw.follow==='boolean' ? raw.follow : PD_PREF_DEFAULTS.follow,
+  };
+}
+function pdSavePrefs(p){ try{ localStorage.setItem(PD_PREFS_KEY, JSON.stringify({ ...pdLoadPrefs(), ...p })); return true; }catch(e){ return false; } }
+
 const PDsvc = {
   sb: _sb, FN: PD_FN, anon: PD_SUPA_ANON, words: pdWords, durFor: pdDurFor, rel: pdRel, clock: pdClock,
   async token(){ if(!_sb) return null; const {data}=await _sb.auth.getSession(); return data?.session?.access_token||null; },
@@ -230,6 +248,6 @@ function useData(){ return React.useContext(PDDataCtx)||{loading:true,user:null,
 
 Object.assign(window, {
   Icon, Eyebrow, Screen, ScrollArea, LargeTitle, NavHeader, RoundBtn, CameraView,
-  iconBtn, TOP_INSET, TAB_H, PDsvc, DataProvider, useData,
+  iconBtn, TOP_INSET, TAB_H, PDsvc, DataProvider, useData, pdLoadPrefs, pdSavePrefs,
   PromptCharacter: window.PromptDropDesignSystem_82c6c3.PromptCharacter,
 });

@@ -243,7 +243,7 @@ function CleanTakeScreen({ app }) {
 
       {/* Sticky compact video that stays visible while controls scroll underneath */}
       <div style={{ flexShrink: 0, padding: "0 14px" }}>
-        <div style={{ borderRadius: 18, overflow: "hidden", position: "relative", height: "clamp(150px, 36vh, 320px)", background: "#000" }}>
+        <div data-testid="ct-preview" style={{ borderRadius: 18, overflow: "hidden", position: "relative", height: "clamp(120px, calc(50dvh - 160px), 320px)", background: "#000" }}>
           {hasVideo ? <CleanPreview vref={vref} url={url} removed={view === "clean" ? removed : []} rate={view === "clean" ? rate : 1} filterCss={view === "clean" ? filterCss : "none"} active={view === "clean"} trimStart={view === "clean" ? trimStart : 0} trimEnd={view === "clean" ? trimEnd : 0} duration={dur} />
             : <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 26, textAlign: "center", gap: 8 }}>
                 <PromptCharacter state={loaded ? "idle" : "processing"} size={56} />
@@ -273,15 +273,16 @@ function CleanTakeScreen({ app }) {
 
       {/* tabs: a real segmented bar in a sunken track, obvious active state */}
       <div style={{ flexShrink: 0, padding: "12px 14px 4px" }}>
-        <div className="pd-hscroll" style={{ display: "flex", gap: 2, background: "var(--surface-sunken)", border: "1px solid var(--border-default)", borderRadius: 12, padding: 3, overflowX: "auto" }}>
+        <div className="pd-hscroll" data-testid="ct-tabs" style={{ display: "flex", gap: 2, background: "var(--surface-sunken)", border: "1px solid var(--border-default)", borderRadius: 12, padding: 3, overflowX: "auto" }}>
           {TABS.map((o) => (
-            <button key={o} className="pd-tap" onClick={() => setTab(o)} style={{ flex: "1 0 auto", minWidth: 72, height: 38, borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)", background: tab === o ? "var(--surface-raised)" : "transparent", color: tab === o ? "var(--text-primary)" : "var(--text-muted)", boxShadow: tab === o ? "var(--shadow-surface)" : "none" }}>{o}</button>
+            <button key={o} className="pd-tap" data-testid={"ct-tab-" + o} aria-pressed={tab === o} onClick={() => setTab(o)} style={{ flex: "1 0 auto", minWidth: 72, height: 38, borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)", background: tab === o ? "var(--surface-raised)" : "transparent", color: tab === o ? "var(--text-primary)" : "var(--text-muted)", boxShadow: tab === o ? "var(--shadow-surface)" : "none" }}>{o}</button>
           ))}
         </div>
       </div>
 
       {/* controls scroll, generous bottom padding so the sticky bar + browser bar never cover them */}
-      <ScrollArea padBottom={"calc(132px + env(safe-area-inset-bottom, 0px))"} style={{ padding: "10px 16px 0" }}>
+      {/* Longhand padding only: a `padding` shorthand here would override padBottom. */}
+      <ScrollArea testid="ct-panel" padBottom={20} style={{ paddingTop: 10, paddingLeft: 16, paddingRight: 16 }}>
         {tab === "Review" && (
           <div style={{ paddingTop: 8 }}>
             <div style={{ background: "var(--surface-elevated)", borderRadius: 16, overflow: "hidden" }}>
@@ -337,8 +338,8 @@ function CleanTakeScreen({ app }) {
             ) : (
               <div style={{ background: "var(--surface-elevated)", borderRadius: 14, padding: 16 }}>
                 <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>Captions need transcription</div>
-                <p style={{ marginTop: 6, fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5 }}>Pause cleanup works now. Transcribe this take to generate captions (needs AI switched on for your account).</p>
-                <button className="pd-tap" onClick={transcribeTake} disabled={transcribing} style={{ marginTop: 12, height: 44, padding: "0 18px", borderRadius: 12, border: "none", background: "var(--accent-primary)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{transcribing ? "Transcribing…" : "Transcribe this take"}</button>
+                <button className="pd-tap" onClick={transcribeTake} disabled={transcribing} style={{ marginTop: 10, height: 44, padding: "0 18px", borderRadius: 12, border: "none", background: "var(--accent-primary)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{transcribing ? "Transcribing…" : "Transcribe this take"}</button>
+                <p style={{ marginTop: 10, fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5 }}>Pause cleanup works now. Transcribe this take to generate captions (needs AI switched on for your account).</p>
               </div>
             )}
           </div>
@@ -369,8 +370,10 @@ function CleanTakeScreen({ app }) {
         )}
       </ScrollArea>
 
-      {/* sticky action: one primary Save; destructive + secondary actions live behind More */}
-      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "10px 16px calc(10px + env(safe-area-inset-bottom, 22px))", background: "linear-gradient(transparent, var(--bg-primary) 24%)", display: "flex", gap: 10, alignItems: "center" }}>
+      {/* Action bar: one primary Save; destructive + secondary actions live behind More.
+          It is a normal flex row under the controls panel, not an overlay, so it can
+          never sit on top of an editing control. */}
+      <div data-testid="ct-actions" style={{ flexShrink: 0, padding: "10px 16px calc(10px + env(safe-area-inset-bottom, 12px))", background: "var(--bg-primary)", borderTop: "1px solid var(--border-subtle)", display: "flex", gap: 10, alignItems: "center" }}>
         <button className="pd-tap" onClick={() => setMoreOpen(true)} aria-label="More actions" style={{ width: 52, height: 52, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 24, lineHeight: 1, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", paddingBottom: 8 }}>...</button>
         <DSc.Button variant="primary" size="lg" fullWidth onClick={save} iconLeft={<Icon name="check" size={18} color="#fff" />}>Save Clean Take</DSc.Button>
       </div>

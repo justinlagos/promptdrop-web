@@ -7,3 +7,6 @@ bc_*/
 .DS_Store
 .fuse_hidden*
 *.timestamp-*.mjs
+
+test-results/
+playwright-report/
