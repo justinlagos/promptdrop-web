@@ -1,6 +1,7 @@
 // REGRESSION: missing desktop editing interface.
 // Original bug: desktop users landed on a review screen with take details and no
-// editing tools. These tests open a take the way a desktop user does, through /app.
+// editing tools, and later on the phone editor squeezed into a 460px frame.
+// These tests open a take the way a desktop user does, through /app.
 import { test, expect } from "@playwright/test";
 import { seedFirstRun, openDesktopApp, seedTake, openTakeEditor, box, isHittable, CONTROL_SELECTOR } from "./helpers.js";
 
@@ -46,18 +47,106 @@ for (const vp of DESKTOPS) {
       await expect.poll(() => video.evaluate((v) => getComputedStyle(v).filter), { message: "brightness slider changes the preview" }).not.toBe(before);
     });
 
-    // Known gap (brief section 4.2). Today desktop shows the phone editor inside a
-    // 460px frame. The target is a real desktop layout: large preview, tools in a side
-    // panel. This test is expected to fail until that ships. When it starts passing,
-    // Playwright reports it, and this test.fail line must be deleted so it becomes a
-    // normal regression check.
-    test("editor uses a desktop layout: large preview with the tools beside it", async ({ page }) => {
-      test.fail(true, "Desktop Clean Take layout is not built yet. Remove this line when it ships.");
+    test("editor uses a desktop layout: large preview, tools beside it, edit map below", async ({ page }) => {
       const app = await openEditor(page);
       const preview = await box(app.getByTestId("ct-preview"));
+      const side = await box(app.getByTestId("ct-side"));
       const panel = await box(app.getByTestId("ct-panel"));
+      const timeline = await box(app.getByTestId("ct-timeline"));
+
       expect(preview.width, "preview uses the desktop width").toBeGreaterThanOrEqual(Math.min(640, vp.width * 0.5));
-      expect(panel.x, "tools panel sits to the right of the preview").toBeGreaterThanOrEqual(preview.right - 1);
+      expect(preview.height, "preview is tall enough to judge an edit").toBeGreaterThanOrEqual(220);
+      expect(side.x, "tools panel sits to the right of the preview").toBeGreaterThanOrEqual(preview.right - 1);
+      expect(panel.x, "tool controls are inside the side panel").toBeGreaterThanOrEqual(side.x - 1);
+      expect(timeline.y, "edit map sits below the preview").toBeGreaterThanOrEqual(preview.bottom - 1);
+
+      // Everything fits the window: nothing important is off screen.
+      for (const [name, b] of [["preview", preview], ["tools panel", side], ["edit map", timeline]]) {
+        expect(b.x, `${name} left edge on screen`).toBeGreaterThanOrEqual(0);
+        expect(b.right, `${name} right edge on screen`).toBeLessThanOrEqual(vp.width);
+        expect(b.bottom, `${name} bottom edge on screen`).toBeLessThanOrEqual(vp.height);
+      }
+
+      // All five tools are visible at once. No sideways scrolling in the tool row.
+      const tabsRow = app.getByTestId("ct-tabs");
+      expect(await tabsRow.evaluate((el) => el.scrollWidth - el.clientWidth), "tool row does not scroll sideways").toBeLessThanOrEqual(1);
+      for (const t of await app.locator('[data-testid^="ct-tab-"]').all()) expect(await isHittable(t), "tool tab can be clicked").toBe(true);
+
+      // Save and Export are in the header and reachable.
+      await expect(app.getByTestId("ct-export")).toBeVisible();
+      await expect(app.getByTestId("ct-save")).toBeVisible();
     });
   });
 }
+
+test.describe("desktop editing", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("edit map shows the detected pause, and clicking it keeps or removes it", async ({ page }) => {
+    const app = await openEditor(page);
+    const pause = app.getByTestId("ct-timeline-pause");
+    await expect(pause, "the one real pause in the test take").toHaveCount(1);
+    await expect(pause).toHaveAttribute("data-kept", "0");
+    await expect(app.getByTestId("ct-main")).toContainText("1 pause suggested");
+
+    await pause.click();
+    await expect(pause, "pause is now kept").toHaveAttribute("data-kept", "1");
+    await expect(app.getByTestId("ct-main")).not.toContainText("1 pause suggested");
+    await pause.click();
+    await expect(pause, "pause is removed again").toHaveAttribute("data-kept", "0");
+  });
+
+  test("clicking the edit map moves the playhead", async ({ page }) => {
+    const app = await openEditor(page);
+    const video = app.getByTestId("ct-preview").locator("video");
+    await expect.poll(() => video.evaluate((v) => v.readyState)).toBeGreaterThanOrEqual(1);
+    const bar = app.getByTestId("ct-timeline-bar");
+    const b = await box(bar);
+    await bar.click({ position: { x: b.width * 0.1, y: b.height / 2 } });
+    await expect.poll(() => video.evaluate((v) => v.currentTime), { message: "playhead moved" }).toBeGreaterThan(0.1);
+  });
+
+  test("status says Unsaved after a change and Saved after saving; Export opens the export tools", async ({ page }) => {
+    const app = await openEditor(page);
+    const status = app.getByTestId("ct-save-status");
+    await expect(status).toHaveAttribute("data-dirty", "0");
+    await app.getByTestId("ct-tab-Clean").click();
+    await app.getByTestId("ct-panel").getByText("Social pace", { exact: true }).click();
+    await expect(status, "a change is reported as unsaved").toHaveAttribute("data-dirty", "1");
+    await app.getByTestId("ct-save").click();
+    await expect(status, "saving clears the unsaved state").toHaveAttribute("data-dirty", "0");
+    await expect(status).toContainText("Saved");
+
+    await app.getByTestId("ct-export").click();
+    await expect(app.getByTestId("ct-tab-Export")).toHaveAttribute("aria-pressed", "true");
+    await expect(app.getByTestId("ct-panel").getByText("Clean Take video")).toBeVisible();
+  });
+
+  test("Space plays and pauses the preview", async ({ page }) => {
+    const app = await openEditor(page);
+    const video = app.getByTestId("ct-preview").locator("video");
+    await expect.poll(() => video.evaluate((v) => v.readyState)).toBeGreaterThanOrEqual(2);
+    await app.getByTestId("ct-main").click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press("Space");
+    await expect.poll(() => video.evaluate((v) => v.paused), { message: "Space starts playback" }).toBe(false);
+    await page.keyboard.press("Space");
+    await expect.poll(() => video.evaluate((v) => v.paused), { message: "Space pauses playback" }).toBe(true);
+  });
+});
+
+test.describe("desktop shell", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("library stays a readable column and the editor takes the full window", async ({ page }) => {
+    await seedFirstRun(page);
+    let app = await openDesktopApp(page);
+    const title = await box(app.getByText("Regression script").first());
+    expect(title.x, "library is centred, not stretched across the window").toBeGreaterThan(300);
+    await seedTake(app);
+    await page.reload();
+    app = await openDesktopApp(page);
+    await openTakeEditor(app);
+    const editor = await box(app.getByTestId("ct-desktop"));
+    expect(editor.width, "editor fills the window").toBeGreaterThanOrEqual(1270);
+  });
+});

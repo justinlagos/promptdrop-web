@@ -4,6 +4,9 @@ const FULLSCREEN = { signin: 1, script: 1, recordSetup: 1, takeReview: 1, meetin
 const ROOTS = { library: LibraryScreen, meetings: MeetingsScreen, account: AccountScreen };
 const PUSHED = { signin: SignInScreen, script: ScriptScreen, recordSetup: RecordSetupScreen, takeReview: CleanTakeScreen, meeting: MeetingDetailScreen, upgrade: UpgradeScreen };
 
+// Screens that take the whole window on desktop instead of the phone-shaped column.
+const WIDE_FULL = { takeReview: 1 };
+
 const TABS = [
   { id: 'library', label: 'Library', icon: 'library' },
   { id: 'record', label: 'Record', icon: 'record' },
@@ -92,6 +95,7 @@ function SignInScreen({ app }) {
 
 function PromptDropApp() {
   const data = useData();
+  const wide = usePdWide();
   const [onboarded, setOnboarded] = React.useState(() => { try { return localStorage.getItem('pd.onboarded') === '1'; } catch { return false; } });
   const [tab, setTab] = React.useState('library');
   const [stack, setStack] = React.useState([]);
@@ -124,12 +128,21 @@ function PromptDropApp() {
   const Root = ROOTS[tab] || LibraryScreen;
   const onRecord = () => { const s = data.scripts[0]; app.nav('recordSetup', s ? { id: s.id, title: s.title, lines: linesFromBody(s.body) } : { id: null, title: 'Untitled', lines: [] }); };
 
+  // Desktop: most screens live in a phone-shaped column. Screens in WIDE_FULL (the
+  // editor) get the whole window instead, rendered outside the column.
+  const column = wide
+    ? { position: 'absolute', top: 20, bottom: 20, left: '50%', width: 460, marginLeft: -230, borderRadius: 30, overflow: 'hidden', background: 'var(--bg-primary)', boxShadow: '0 50px 130px -30px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06)' }
+    : { position: 'absolute', inset: 0, overflow: 'hidden', background: 'var(--bg-primary)' };
+  const fullEntries = wide ? stack.map((entry, i) => ({ entry, i })).filter(x => WIDE_FULL[x.entry.screen] && PUSHED[x.entry.screen]) : [];
+
   return (
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: 'var(--bg-primary)' }}>
+    <div data-testid="app-shell" data-wide={wide ? '1' : '0'} style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: wide ? 'radial-gradient(1200px 700px at 50% -10%, rgba(76,141,255,0.14), transparent 60%), var(--bg-secondary, #07080b)' : 'var(--bg-primary)' }}>
+    {wide && <div style={{ position: 'absolute', top: 22, left: 30, fontWeight: 800, fontSize: 18, letterSpacing: '-.02em', color: 'var(--text-primary)' }}>prompt<span style={{ color: 'var(--accent-primary)' }}>drop</span></div>}
+    <div style={column}>
       <Root app={app} />
       {stack.map((entry, i) => {
         const Comp = PUSHED[entry.screen];
-        if (!Comp) return null;
+        if (!Comp || (wide && WIDE_FULL[entry.screen])) return null;
         return (<div key={i} className="pd-push" style={{ position: 'absolute', inset: 0, zIndex: 10 + i }}><Comp app={{ ...app, params: entry.params || {} }} /></div>);
       })}
       {showTabBar && <TabBar tab={tab} onTab={app.setTab} onRecord={onRecord} />}
@@ -143,6 +156,11 @@ function PromptDropApp() {
           </div>
         </div>
       )}
+    </div>
+    {fullEntries.map(({ entry, i }) => {
+      const Comp = PUSHED[entry.screen];
+      return (<div key={'full-' + i} style={{ position: 'absolute', inset: 0, zIndex: 60 + i, background: 'var(--bg-primary)' }}><Comp app={{ ...app, params: entry.params || {} }} /></div>);
+    })}
     </div>
   );
 }

@@ -660,6 +660,31 @@ const PDsvc = {
     if (_sb) await _sb.auth.signOut();
   }
 };
+const PD_WIDE_QUERY = "(min-width: 861px)";
+function usePdWide() {
+  const [w, setW] = React.useState(() => {
+    try {
+      return window.matchMedia(PD_WIDE_QUERY).matches;
+    } catch (e) {
+      return false;
+    }
+  });
+  React.useEffect(() => {
+    let mq;
+    try {
+      mq = window.matchMedia(PD_WIDE_QUERY);
+    } catch (e) {
+      return;
+    }
+    const h = (e) => setW(e.matches);
+    mq.addEventListener ? mq.addEventListener("change", h) : mq.addListener(h);
+    setW(mq.matches);
+    return () => {
+      mq.removeEventListener ? mq.removeEventListener("change", h) : mq.removeListener(h);
+    };
+  }, []);
+  return w;
+}
 const PDDataCtx = React.createContext(null);
 function DataProvider({ children }) {
   const [st, setSt] = React.useState({ loading: true, user: null, plan: "free", scripts: [], takes: [] });
@@ -707,6 +732,7 @@ Object.assign(window, {
   useData,
   pdLoadPrefs,
   pdSavePrefs,
+  usePdWide,
   PromptCharacter: window.PromptDropDesignSystem_82c6c3.PromptCharacter
 });
 
@@ -1168,8 +1194,37 @@ function _ctCaption(ctx, segments, t, w, h) {
   ctx.fillStyle = "#fff";
   ctx.fillText(text, w / 2, y);
 }
+async function _ctResolveDuration(video, hint) {
+  if (isFinite(video.duration) && video.duration > 0) return video.duration;
+  try {
+    await new Promise((res) => {
+      let done = false;
+      const end = () => {
+        if (done) return;
+        done = true;
+        video.removeEventListener("durationchange", chk);
+        video.removeEventListener("timeupdate", chk);
+        res();
+      };
+      const chk = () => {
+        if (isFinite(video.duration) && video.duration > 0) end();
+      };
+      video.addEventListener("durationchange", chk);
+      video.addEventListener("timeupdate", chk);
+      setTimeout(end, 4e3);
+      try {
+        video.currentTime = 1e101;
+      } catch (e) {
+        end();
+      }
+    });
+  } catch (e) {
+  }
+  if (isFinite(video.duration) && video.duration > 0) return video.duration;
+  return hint > 0 ? hint : 0;
+}
 async function ctRenderCleanVideo(blob, opts = {}) {
-  const { removed = [], rate = 1, filterCss = "none", trimStart = 0, trimEnd = 0, segments = null, withCaptions = false, onProgress } = opts;
+  const { removed = [], rate = 1, filterCss = "none", trimStart = 0, trimEnd = 0, segments = null, withCaptions = false, onProgress, duration = 0 } = opts;
   if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) throw new Error("This browser cannot render video here.");
   const url = URL.createObjectURL(blob);
   const video = document.createElement("video");
@@ -1179,7 +1234,14 @@ async function ctRenderCleanVideo(blob, opts = {}) {
     video.onloadedmetadata = res;
     video.onerror = () => rej(new Error("Could not read the recording."));
   });
-  const dur = isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+  const dur = await _ctResolveDuration(video, duration);
+  if (!(dur > 0)) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (e) {
+    }
+    throw new Error("Could not work out the length of this recording, so it cannot be exported here.");
+  }
   const w = video.videoWidth || 720, h = video.videoHeight || 1280;
   const canvas = document.createElement("canvas");
   canvas.width = w;
@@ -1358,9 +1420,16 @@ async function ctDetectSilences(blob) {
       energies.push(Math.sqrt(sum / win));
     }
     const sorted = [...energies].sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)] || 0;
-    const peak = sorted[Math.floor(sorted.length * 0.95)] || 0.01;
-    const floor = Math.max(median * 1.8, peak * 0.06, 4e-3);
+    const peak = sorted[Math.floor(sorted.length * 0.95)] || 0;
+    if (peak < 3e-3) {
+      try {
+        ctx.close();
+      } catch (e) {
+      }
+      return { silences: [], duration: audio.duration };
+    }
+    const quiet = sorted[Math.floor(sorted.length * 0.1)] || 0;
+    const floor = Math.min(Math.max(quiet * 2.5, peak * 0.08, 4e-3), peak * 0.35);
     const sil = [];
     let runStart = -1;
     for (let k = 0; k < energies.length; k++) {
@@ -1445,6 +1514,49 @@ function CleanPreview({ url, removed, rate, filterCss, active, trimStart, trimEn
   }
   return /* @__PURE__ */ React.createElement("video", { ref, src: url, playsInline: true, controls: true, preload: "metadata", onLoadedMetadata: applyRate, onPlay, onRateChange: applyRate, onTimeUpdate: onTime, style: { width: "100%", height: "100%", objectFit: "contain", background: "#000", filter: filterCss || "none", transition: "filter .12s ease" } });
 }
+function ctEditKey(e) {
+  const restored = Object.keys(e.restored || {}).filter((k) => e.restored[k]).sort();
+  const st = e.style || {};
+  return JSON.stringify([e.preset, e.speed, Number(e.trimStart) || 0, Number(e.trimEnd) || 0, restored, Number(st.b), Number(st.c), Number(st.s)]);
+}
+function CtTimeline({ vref, dur, removed, pauses, restored, onToggle, trimStart, trimEnd, cleanDur }) {
+  const [t, setT] = React.useState(0);
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      const v = vref.current;
+      if (v) setT(v.currentTime || 0);
+    }, 120);
+    return () => clearInterval(id);
+  }, [vref]);
+  const pct = (x) => dur > 0 ? Math.max(0, Math.min(100, x / dur * 100)) : 0;
+  const seek = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const v = vref.current;
+    if (v && dur > 0) {
+      v.currentTime = Math.max(0, Math.min(dur, (e.clientX - r.left) / r.width * dur));
+      setT(v.currentTime);
+    }
+  };
+  const trims = (removed || []).filter((s) => s.type === "trim");
+  return /* @__PURE__ */ React.createElement("div", { "data-testid": "ct-timeline", style: { flexShrink: 0, background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 16, padding: "12px 14px 14px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: 700, color: "var(--text-primary)" } }, "Edit map"), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: "0.04em", color: "var(--text-muted)" } }, ctClock(t), " / ", ctClock(dur), " \xB7 clean ", ctClock(cleanDur))), /* @__PURE__ */ React.createElement("div", { "data-testid": "ct-timeline-bar", onClick: seek, role: "slider", "aria-label": "Playhead", "aria-valuemin": 0, "aria-valuemax": Math.round(dur), "aria-valuenow": Math.round(t), style: { position: "relative", height: 34, borderRadius: 9, overflow: "hidden", background: "var(--success, #34C759)", cursor: "pointer" } }, trims.map((s) => /* @__PURE__ */ React.createElement("div", { key: s.id, title: s.label, style: { position: "absolute", top: 0, bottom: 0, left: pct(s.start) + "%", width: Math.max(0.4, pct(s.end) - pct(s.start)) + "%", background: "var(--recording, #FF3B30)", opacity: 0.9 } })), (pauses || []).map((p) => {
+    const kept = !!restored[p.id];
+    return /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: p.id,
+        "data-testid": "ct-timeline-pause",
+        "data-kept": kept ? "1" : "0",
+        title: (kept ? "Kept: " : "Removed: ") + p.label + " at " + ctClock(p.start) + ". Click to " + (kept ? "remove" : "keep"),
+        "aria-label": (kept ? "Kept pause at " : "Removed pause at ") + ctClock(p.start),
+        onClick: (e) => {
+          e.stopPropagation();
+          onToggle(p.id);
+        },
+        style: { position: "absolute", top: 0, bottom: 0, left: pct(p.start) + "%", width: Math.max(0.6, pct(p.end) - pct(p.start)) + "%", minWidth: 6, padding: 0, border: kept ? "2px dashed rgba(255,255,255,0.75)" : "none", background: kept ? "transparent" : "var(--recording, #FF3B30)", cursor: "pointer" }
+      }
+    );
+  }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, left: pct(t) + "%", width: 2, marginLeft: -1, background: "#fff", boxShadow: "0 0 0 1px rgba(0,0,0,0.35)", pointerEvents: "none" } })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: "var(--text-muted)" } }, "Green is kept, red is removed. Click the bar to move the playhead. Click a red pause to keep it. Space plays, arrow keys step one second."));
+}
 function CleanTakeScreen({ app }) {
   const pd = useData();
   const [take, setTake] = React.useState(null);
@@ -1471,6 +1583,9 @@ function CleanTakeScreen({ app }) {
   const [exportErr, setExportErr] = React.useState("");
   const vref = React.useRef(null);
   const segs = take && take.segments || [];
+  const wide = usePdWide();
+  const savedRef = React.useRef(ctEditKey({ preset: "Balanced", speed: "Normal", trimStart: 0, trimEnd: 0, restored: {}, style: { b: 100, c: 100, s: 100 } }));
+  const [savedTick, setSavedTick] = React.useState(0);
   React.useEffect(() => {
     let live = true;
     (async () => {
@@ -1483,9 +1598,16 @@ function CleanTakeScreen({ app }) {
         urlRef.current = u;
         setUrl(u);
         if (t.clean) {
-          setPreset(t.clean.preset || "Balanced");
-          setSilences(t.clean.silences || null);
-          setDuration(t.clean.duration || t.durationMs / 1e3);
+          const cl = t.clean;
+          setPreset(cl.preset || "Balanced");
+          setSpeed(cl.speed || "Normal");
+          setTrimStart(Number(cl.trimStart) || 0);
+          setTrimEnd(Number(cl.trimEnd) || 0);
+          setRestored(cl.restored && typeof cl.restored === "object" ? cl.restored : {});
+          setStyle({ b: 100, c: 100, s: 100, ...cl.style || {} });
+          savedRef.current = ctEditKey({ preset: cl.preset || "Balanced", speed: cl.speed || "Normal", trimStart: Number(cl.trimStart) || 0, trimEnd: Number(cl.trimEnd) || 0, restored: cl.restored || {}, style: { b: 100, c: 100, s: 100, ...cl.style || {} } });
+          setSilences(cl.silences || null);
+          setDuration(cl.duration || t.durationMs / 1e3);
           setAnalysing(false);
         } else {
           setStep("Finding pauses\u2026");
@@ -1529,7 +1651,12 @@ function CleanTakeScreen({ app }) {
     try {
       await pd.svc.putTake({ ...take, clean });
     } catch (e) {
+      app.toast("Could not save. Storage may be full.");
+      return;
     }
+    setTake({ ...take, clean });
+    savedRef.current = ctEditKey({ preset, speed, trimStart, trimEnd, restored, style });
+    setSavedTick((n) => n + 1);
     app.toast("Clean Take saved");
   }
   async function del() {
@@ -1573,7 +1700,7 @@ function CleanTakeScreen({ app }) {
     setExporting(withCaptions ? "captioned" : "clean");
     setProg(0);
     try {
-      const out = await ctRenderCleanVideo(take.blob, { removed, rate, filterCss, trimStart, trimEnd, segments: take.segments || null, withCaptions, onProgress: setProg });
+      const out = await ctRenderCleanVideo(take.blob, { removed, rate, filterCss, trimStart, trimEnd, duration: dur, segments: take.segments || null, withCaptions, onProgress: setProg });
       ctDownloadBlob(out, "promptdrop-clean-take.webm");
     } catch (e) {
       setExportErr(e.message || "Export failed.");
@@ -1594,12 +1721,42 @@ function CleanTakeScreen({ app }) {
     setExporting(null);
   }
   const TABS = ["Review", "Clean", "Captions", "Style", "Export"];
+  const dirty = ctEditKey({ preset, speed, trimStart, trimEnd, restored, style }) !== savedRef.current;
+  const allPauses = React.useMemo(() => ctPauseDecisions(silences, preset), [silences, preset]);
+  const toggleRestore = (id) => setRestored((r) => ({ ...r, [id]: !r[id] }));
+  React.useEffect(() => {
+    if (!wide) return;
+    const onKey = (e) => {
+      const tag = e.target && e.target.tagName || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const v = vref.current;
+      if (!v) return;
+      if (e.key === " ") {
+        e.preventDefault();
+        v.paused ? v.play().catch(() => {
+        }) : v.pause();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        v.currentTime = Math.max(0, v.currentTime - 1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        v.currentTime = Math.min(v.duration || dur, v.currentTime + 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [wide, dur]);
   if (analysing) return /* @__PURE__ */ React.createElement(Screen, null, /* @__PURE__ */ React.createElement(NavHeader, { onBack: app.back, title: "Clean Take" }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 30 } }, /* @__PURE__ */ React.createElement(PromptCharacter, { state: "processing", size: 92 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 19, fontWeight: 800, color: "var(--text-primary)" } }, "Preparing your clean edit\u2026"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "var(--text-muted)" } }, step)));
-  return /* @__PURE__ */ React.createElement(Screen, null, /* @__PURE__ */ React.createElement(NavHeader, { onBack: app.back, title: "Clean Take", action: hasVideo ? /* @__PURE__ */ React.createElement("button", { className: "pd-tap", style: iconBtn, onClick: download }, /* @__PURE__ */ React.createElement(Icon, { name: "download", size: 19, color: "var(--text-secondary)" })) : null }), /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, padding: "0 14px" } }, /* @__PURE__ */ React.createElement("div", { "data-testid": "ct-preview", style: { borderRadius: 18, overflow: "hidden", position: "relative", height: "clamp(120px, calc(50dvh - 160px), 320px)", background: "#000" } }, hasVideo ? /* @__PURE__ */ React.createElement(CleanPreview, { vref, url, removed: view === "clean" ? removed : [], rate: view === "clean" ? rate : 1, filterCss: view === "clean" ? filterCss : "none", active: view === "clean", trimStart: view === "clean" ? trimStart : 0, trimEnd: view === "clean" ? trimEnd : 0, duration: dur }) : /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 26, textAlign: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(PromptCharacter, { state: loaded ? "idle" : "processing", size: 56 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 600, color: "var(--text-primary)" } }, loaded ? "No video was captured" : "Loading\u2026"), loaded && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--text-muted)", maxWidth: 260 } }, "This browser may not support in-app recording. Allow camera and microphone, or record from the desktop app."))), hasVideo && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", background: "var(--surface-sunken)", borderRadius: 10, padding: 3, gap: 2, marginTop: 10 } }, [["original", "Original"], ["clean", "Clean Edit"]].map(([v, l]) => /* @__PURE__ */ React.createElement("button", { key: v, className: "pd-tap", onClick: () => setView(v), style: { flex: 1, height: 34, borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 13, fontWeight: 600, background: view === v ? "var(--surface-raised)" : "transparent", color: view === v ? "var(--text-primary)" : "var(--text-muted)" } }, l))), hasVideo && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, fontSize: 12.5, color: "var(--text-secondary)", textAlign: "center", lineHeight: 1.45 } }, preset !== "Off" && !silences ? /* @__PURE__ */ React.createElement(React.Fragment, null, preset, " pause cleanup selected. Automatic pause detection is not available for this recording.") : preset !== "Off" && pauseDecisions.length ? /* @__PURE__ */ React.createElement(React.Fragment, null, pauseDecisions.length, " pause", pauseDecisions.length === 1 ? "" : "s", " suggested \xB7 ", ctClock(dur), " \u2192 ", ctClock(cleanDur)) : trimStart || trimEnd || rate !== 1 ? /* @__PURE__ */ React.createElement(React.Fragment, null, "Edits applied \xB7 ", ctClock(dur), " \u2192 ", ctClock(cleanDur)) : /* @__PURE__ */ React.createElement(React.Fragment, null, "Clean Take is ready for edits \xB7 ", ctClock(dur)))), /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, padding: "12px 14px 4px" } }, /* @__PURE__ */ React.createElement("div", { className: "pd-hscroll", "data-testid": "ct-tabs", style: { display: "flex", gap: 2, background: "var(--surface-sunken)", border: "1px solid var(--border-default)", borderRadius: 12, padding: 3, overflowX: "auto" } }, TABS.map((o) => /* @__PURE__ */ React.createElement("button", { key: o, className: "pd-tap", "data-testid": "ct-tab-" + o, "aria-pressed": tab === o, onClick: () => setTab(o), style: { flex: "1 0 auto", minWidth: 72, height: 38, borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)", background: tab === o ? "var(--surface-raised)" : "transparent", color: tab === o ? "var(--text-primary)" : "var(--text-muted)", boxShadow: tab === o ? "var(--shadow-surface)" : "none" } }, o)))), /* @__PURE__ */ React.createElement(ScrollArea, { testid: "ct-panel", padBottom: 20, style: { paddingTop: 10, paddingLeft: 16, paddingRight: 16 } }, tab === "Review" && /* @__PURE__ */ React.createElement("div", { style: { paddingTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "var(--surface-elevated)", borderRadius: 16, overflow: "hidden" } }, [["clock", "Original length", ctClock(dur)], ["clock", "Clean Take length", ctClock(cleanDur)], ["video", "Source", take && take.source === "meeting" ? "Meeting" : "Camera + mic"], ["download", "Size", take ? take.size > 1e6 ? (take.size / 1e6).toFixed(1) + " MB" : Math.round((take.size || 0) / 1e3) + " KB" : "0 KB"]].map((row, n, arr) => /* @__PURE__ */ React.createElement("div", { key: row[1], style: { display: "flex", alignItems: "center", gap: 13, padding: "14px 16px", borderBottom: n === arr.length - 1 ? "none" : "1px solid var(--border-subtle)" } }, /* @__PURE__ */ React.createElement(Icon, { name: row[0], size: 18, color: "var(--text-muted)" }), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, fontSize: 14.5, color: "var(--text-secondary)" } }, row[1]), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14.5, fontWeight: 600, color: "var(--text-primary)" } }, row[2])))), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => setEditMap(true), style: { marginTop: 14, width: "100%", height: 48, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 14.5, fontWeight: 600, cursor: "pointer" } }, "Open Edit Map"), /* @__PURE__ */ React.createElement("p", { style: { marginTop: 14, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 } }, "Your original recording is always kept untouched. Clean Take only changes what you see and export.")), tab === "Clean" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, /* @__PURE__ */ React.createElement(CtCard, { title: "Clean pauses", hint: silences ? "Trims dead air and long gaps, detected on this device." : "Automatic pause detection is not available for this recording." }, /* @__PURE__ */ React.createElement(DSc.SegmentedControl, { options: ["Off", "Light", "Balanced", "Tight"], value: preset, onChange: setPreset })), /* @__PURE__ */ React.createElement(CtCard, { title: "Speed", hint: `Playing at ${rate.toFixed(2)}x` }, /* @__PURE__ */ React.createElement(DSc.SegmentedControl, { options: ["Normal", "Slightly faster", "Social pace"], value: speed, onChange: setSpeed })), /* @__PURE__ */ React.createElement(CtCard, { title: "Trim", hint: trimStart || trimEnd ? `${ctClock(trimStart)} off the start \xB7 ${ctClock(trimEnd)} off the end` : "Cut the start or the end" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } }, /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: setStartFromPlayhead, style: ctMiniBtn }, "Set start to playhead"), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: setEndFromPlayhead, style: ctMiniBtn }, "Set end to playhead")), /* @__PURE__ */ React.createElement(DSc.Slider, { label: "Start", min: 0, max: Math.max(1, Math.floor(dur / 2)), value: trimStart, onChange: (e) => setTrimStart(+e.target.value), suffix: "s" }), /* @__PURE__ */ React.createElement("div", { style: { height: 10 } }), /* @__PURE__ */ React.createElement(DSc.Slider, { label: "End", min: 0, max: Math.max(1, Math.floor(dur / 2)), value: trimEnd, onChange: (e) => setTrimEnd(+e.target.value), suffix: "s" })), /* @__PURE__ */ React.createElement(CtCard, { title: "Remove filler words", hint: "Needs transcription." }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface-sunken)", padding: "9px 12px", borderRadius: 10 } }, "Available once transcription is switched on for your account.")), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => setEditMap(true), style: { width: "100%", height: 48, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 14.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(Icon, { name: "redo", size: 16, color: "var(--text-secondary)" }), "Review removed sections")), tab === "Captions" && /* @__PURE__ */ React.createElement("div", { style: { paddingTop: 10 } }, take && take.transcript ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("p", { style: { fontSize: 14.5, color: "var(--text-secondary)", lineHeight: 1.6 } }, take.transcript.slice(0, 400), take.transcript.length > 400 ? "\u2026" : ""), segs.length > 0 ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 14 } }, /* @__PURE__ */ React.createElement(DSc.Button, { variant: "secondary", size: "md", onClick: () => ctDownloadText(ctSRT(segs), "captions.srt") }, "Export SRT"), /* @__PURE__ */ React.createElement(DSc.Button, { variant: "secondary", size: "md", onClick: () => ctDownloadText(ctVTT(segs), "captions.vtt") }, "Export VTT")) : /* @__PURE__ */ React.createElement("p", { style: { marginTop: 12, fontSize: 13, color: "var(--text-muted)" } }, "This transcript has no timing, so timed captions are not available. Re-transcribe to get SRT/VTT."), /* @__PURE__ */ React.createElement("p", { style: { marginTop: 12, fontSize: 12.5, color: "var(--text-muted)" } }, "Burned-in captions arrive with video export rendering.")) : /* @__PURE__ */ React.createElement("div", { style: { background: "var(--surface-elevated)", borderRadius: 14, padding: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 600, color: "var(--text-primary)" } }, "Captions need transcription"), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: transcribeTake, disabled: transcribing, style: { marginTop: 10, height: 44, padding: "0 18px", borderRadius: 12, border: "none", background: "var(--accent-primary)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" } }, transcribing ? "Transcribing\u2026" : "Transcribe this take"), /* @__PURE__ */ React.createElement("p", { style: { marginTop: 10, fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5 } }, "Pause cleanup works now. Transcribe this take to generate captions (needs AI switched on for your account)."))), tab === "Style" && /* @__PURE__ */ React.createElement("div", { style: { paddingTop: 10, display: "flex", flexDirection: "column", gap: 18 } }, /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13, color: "var(--text-muted)", margin: 0 } }, "Adjustments preview live. They are baked in when video export rendering is connected."), /* @__PURE__ */ React.createElement(Field, { label: "Brightness" }, /* @__PURE__ */ React.createElement(DSc.Slider, { min: 70, max: 130, value: style.b, onChange: (e) => setStyle((s) => ({ ...s, b: +e.target.value })), suffix: "%" })), /* @__PURE__ */ React.createElement(Field, { label: "Contrast" }, /* @__PURE__ */ React.createElement(DSc.Slider, { min: 70, max: 130, value: style.c, onChange: (e) => setStyle((s) => ({ ...s, c: +e.target.value })), suffix: "%" })), /* @__PURE__ */ React.createElement(Field, { label: "Saturation" }, /* @__PURE__ */ React.createElement(DSc.Slider, { min: 50, max: 150, value: style.s, onChange: (e) => setStyle((s) => ({ ...s, s: +e.target.value })), suffix: "%" })), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => setStyle({ b: 100, c: 100, s: 100 }), style: { alignSelf: "flex-start", background: "none", border: "none", color: "var(--accent-primary)", fontSize: 13, fontWeight: 600, cursor: "pointer" } }, "Reset to natural")), tab === "Export" && /* @__PURE__ */ React.createElement("div", { style: { paddingTop: 10, display: "flex", flexDirection: "column", gap: 10 } }, exporting && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: "var(--text-secondary)", background: "var(--surface-sunken)", borderRadius: 10, padding: "10px 12px" } }, "Rendering ", exporting, " export", prog > 0 ? " \xB7 " + Math.round(prog * 100) + "%" : "\u2026", ". This plays the take through once, so it takes about as long as the video."), exportErr && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: "var(--recording)", background: "var(--surface-sunken)", borderRadius: 10, padding: "10px 12px" } }, exportErr), /* @__PURE__ */ React.createElement(ExportRow, { label: "Original video", sub: ctClock(dur), ready: true, onClick: download }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Clean Take video", sub: ctClock(cleanDur) + " \xB7 renders on your phone", ready: !!(take == null ? void 0 : take.blob) && !exporting, onClick: () => exportClean(false) }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Captioned video", sub: segs.length ? "Burns in captions" : "Needs transcription", ready: segs.length > 0 && !exporting, onClick: () => exportClean(true) }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Audio only (WAV)", sub: "Extracts the audio", ready: !!(take == null ? void 0 : take.blob) && !exporting, onClick: exportAudio }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Transcript", sub: take && take.transcript ? "Ready" : "Needs transcription", ready: !!(take && take.transcript), onClick: () => {
+  const previewBlock = /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: wide ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : { flexShrink: 0, padding: "0 14px" } }, /* @__PURE__ */ React.createElement("div", { "data-testid": "ct-preview", style: wide ? { borderRadius: 18, overflow: "hidden", position: "relative", flex: 1, minHeight: 220, background: "#000" } : { borderRadius: 18, overflow: "hidden", position: "relative", height: "clamp(120px, calc(50dvh - 160px), 320px)", background: "#000" } }, hasVideo ? /* @__PURE__ */ React.createElement(CleanPreview, { vref, url, removed: view === "clean" ? removed : [], rate: view === "clean" ? rate : 1, filterCss: view === "clean" ? filterCss : "none", active: view === "clean", trimStart: view === "clean" ? trimStart : 0, trimEnd: view === "clean" ? trimEnd : 0, duration: dur }) : /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 26, textAlign: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(PromptCharacter, { state: loaded ? "idle" : "processing", size: 56 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 600, color: "var(--text-primary)" } }, loaded ? "No video was captured" : "Loading\u2026"), loaded && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--text-muted)", maxWidth: 260 } }, "This browser may not support in-app recording. Allow camera and microphone, or record from the desktop app."))), hasVideo && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", background: "var(--surface-sunken)", borderRadius: 10, padding: 3, gap: 2, marginTop: 10 } }, [["original", "Original"], ["clean", "Clean Edit"]].map(([v, l]) => /* @__PURE__ */ React.createElement("button", { key: v, className: "pd-tap", onClick: () => setView(v), style: { flex: 1, height: 34, borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 13, fontWeight: 600, background: view === v ? "var(--surface-raised)" : "transparent", color: view === v ? "var(--text-primary)" : "var(--text-muted)" } }, l))), hasVideo && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, fontSize: 12.5, color: "var(--text-secondary)", textAlign: "center", lineHeight: 1.45 } }, preset !== "Off" && !silences ? /* @__PURE__ */ React.createElement(React.Fragment, null, preset, " pause cleanup selected. Automatic pause detection is not available for this recording.") : preset !== "Off" && pauseDecisions.length ? /* @__PURE__ */ React.createElement(React.Fragment, null, pauseDecisions.length, " pause", pauseDecisions.length === 1 ? "" : "s", " suggested \xB7 ", ctClock(dur), " \u2192 ", ctClock(cleanDur)) : trimStart || trimEnd || rate !== 1 ? /* @__PURE__ */ React.createElement(React.Fragment, null, "Edits applied \xB7 ", ctClock(dur), " \u2192 ", ctClock(cleanDur)) : /* @__PURE__ */ React.createElement(React.Fragment, null, "Clean Take is ready for edits \xB7 ", ctClock(dur)))));
+  const tabsBar = /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, padding: wide ? "14px 16px 4px" : "12px 14px 4px" } }, /* @__PURE__ */ React.createElement("div", { className: "pd-hscroll", "data-testid": "ct-tabs", style: { display: "flex", gap: 2, background: "var(--surface-sunken)", border: "1px solid var(--border-default)", borderRadius: 12, padding: 3, overflowX: "auto" } }, TABS.map((o) => /* @__PURE__ */ React.createElement("button", { key: o, className: "pd-tap", "data-testid": "ct-tab-" + o, "aria-pressed": tab === o, onClick: () => setTab(o), style: { flex: wide ? "1 1 0" : "1 0 auto", minWidth: wide ? 0 : 72, height: 38, borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)", background: tab === o ? "var(--surface-raised)" : "transparent", color: tab === o ? "var(--text-primary)" : "var(--text-muted)", boxShadow: tab === o ? "var(--shadow-surface)" : "none" } }, o)))));
+  const panel = /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ScrollArea, { testid: "ct-panel", padBottom: 20, style: { paddingTop: 10, paddingLeft: 16, paddingRight: 16 } }, tab === "Review" && /* @__PURE__ */ React.createElement("div", { style: { paddingTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "var(--surface-elevated)", borderRadius: 16, overflow: "hidden" } }, [["clock", "Original length", ctClock(dur)], ["clock", "Clean Take length", ctClock(cleanDur)], ["video", "Source", take && take.source === "meeting" ? "Meeting" : "Camera + mic"], ["download", "Size", take ? take.size > 1e6 ? (take.size / 1e6).toFixed(1) + " MB" : Math.round((take.size || 0) / 1e3) + " KB" : "0 KB"]].map((row, n, arr) => /* @__PURE__ */ React.createElement("div", { key: row[1], style: { display: "flex", alignItems: "center", gap: 13, padding: "14px 16px", borderBottom: n === arr.length - 1 ? "none" : "1px solid var(--border-subtle)" } }, /* @__PURE__ */ React.createElement(Icon, { name: row[0], size: 18, color: "var(--text-muted)" }), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, fontSize: 14.5, color: "var(--text-secondary)" } }, row[1]), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14.5, fontWeight: 600, color: "var(--text-primary)" } }, row[2])))), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => setEditMap(true), style: { marginTop: 14, width: "100%", height: 48, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 14.5, fontWeight: 600, cursor: "pointer" } }, "Open Edit Map"), /* @__PURE__ */ React.createElement("p", { style: { marginTop: 14, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 } }, "Your original recording is always kept untouched. Clean Take only changes what you see and export.")), tab === "Clean" && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, /* @__PURE__ */ React.createElement(CtCard, { title: "Clean pauses", hint: silences ? "Trims dead air and long gaps, detected on this device." : "Automatic pause detection is not available for this recording." }, /* @__PURE__ */ React.createElement(DSc.SegmentedControl, { options: ["Off", "Light", "Balanced", "Tight"], value: preset, onChange: setPreset })), /* @__PURE__ */ React.createElement(CtCard, { title: "Speed", hint: `Playing at ${rate.toFixed(2)}x` }, /* @__PURE__ */ React.createElement(DSc.SegmentedControl, { options: ["Normal", "Slightly faster", "Social pace"], value: speed, onChange: setSpeed })), /* @__PURE__ */ React.createElement(CtCard, { title: "Trim", hint: trimStart || trimEnd ? `${ctClock(trimStart)} off the start \xB7 ${ctClock(trimEnd)} off the end` : "Cut the start or the end" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } }, /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: setStartFromPlayhead, style: ctMiniBtn }, "Set start to playhead"), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: setEndFromPlayhead, style: ctMiniBtn }, "Set end to playhead")), /* @__PURE__ */ React.createElement(DSc.Slider, { label: "Start", min: 0, max: Math.max(1, Math.floor(dur / 2)), value: trimStart, onChange: (e) => setTrimStart(+e.target.value), suffix: "s" }), /* @__PURE__ */ React.createElement("div", { style: { height: 10 } }), /* @__PURE__ */ React.createElement(DSc.Slider, { label: "End", min: 0, max: Math.max(1, Math.floor(dur / 2)), value: trimEnd, onChange: (e) => setTrimEnd(+e.target.value), suffix: "s" })), /* @__PURE__ */ React.createElement(CtCard, { title: "Remove filler words", hint: "Needs transcription." }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface-sunken)", padding: "9px 12px", borderRadius: 10 } }, "Available after this take is transcribed. Use the Captions tab.")), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => setEditMap(true), style: { width: "100%", height: 48, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 14.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(Icon, { name: "redo", size: 16, color: "var(--text-secondary)" }), "Review removed sections")), tab === "Captions" && /* @__PURE__ */ React.createElement("div", { style: { paddingTop: 10 } }, take && take.transcript ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("p", { style: { fontSize: 14.5, color: "var(--text-secondary)", lineHeight: 1.6 } }, take.transcript.slice(0, 400), take.transcript.length > 400 ? "\u2026" : ""), segs.length > 0 ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 14 } }, /* @__PURE__ */ React.createElement(DSc.Button, { variant: "secondary", size: "md", onClick: () => ctDownloadText(ctSRT(segs), "captions.srt") }, "Export SRT"), /* @__PURE__ */ React.createElement(DSc.Button, { variant: "secondary", size: "md", onClick: () => ctDownloadText(ctVTT(segs), "captions.vtt") }, "Export VTT")) : /* @__PURE__ */ React.createElement("p", { style: { marginTop: 12, fontSize: 13, color: "var(--text-muted)" } }, "This transcript has no timing, so timed captions are not available. Re-transcribe to get SRT/VTT."), /* @__PURE__ */ React.createElement("p", { style: { marginTop: 12, fontSize: 12.5, color: "var(--text-muted)" } }, "To burn captions into the video, use Captioned video in Export.")) : /* @__PURE__ */ React.createElement("div", { style: { background: "var(--surface-elevated)", borderRadius: 14, padding: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 600, color: "var(--text-primary)" } }, "Captions need transcription"), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: transcribeTake, disabled: transcribing, style: { marginTop: 10, height: 44, padding: "0 18px", borderRadius: 12, border: "none", background: "var(--accent-primary)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" } }, transcribing ? "Transcribing\u2026" : "Transcribe this take"), /* @__PURE__ */ React.createElement("p", { style: { marginTop: 10, fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5 } }, "Pause cleanup works now. Transcribe this take to generate captions. Transcription needs AI to be switched on for this site."))), tab === "Style" && /* @__PURE__ */ React.createElement("div", { style: { paddingTop: 10, display: "flex", flexDirection: "column", gap: 18 } }, /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13, color: "var(--text-muted)", margin: 0 } }, "Adjustments show in the preview straight away and are applied to the exported video."), /* @__PURE__ */ React.createElement(Field, { label: "Brightness" }, /* @__PURE__ */ React.createElement(DSc.Slider, { min: 70, max: 130, value: style.b, onChange: (e) => setStyle((s) => ({ ...s, b: +e.target.value })), suffix: "%" })), /* @__PURE__ */ React.createElement(Field, { label: "Contrast" }, /* @__PURE__ */ React.createElement(DSc.Slider, { min: 70, max: 130, value: style.c, onChange: (e) => setStyle((s) => ({ ...s, c: +e.target.value })), suffix: "%" })), /* @__PURE__ */ React.createElement(Field, { label: "Saturation" }, /* @__PURE__ */ React.createElement(DSc.Slider, { min: 50, max: 150, value: style.s, onChange: (e) => setStyle((s) => ({ ...s, s: +e.target.value })), suffix: "%" })), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => setStyle({ b: 100, c: 100, s: 100 }), style: { alignSelf: "flex-start", background: "none", border: "none", color: "var(--accent-primary)", fontSize: 13, fontWeight: 600, cursor: "pointer" } }, "Reset to natural")), tab === "Export" && /* @__PURE__ */ React.createElement("div", { style: { paddingTop: 10, display: "flex", flexDirection: "column", gap: 10 } }, exporting && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: "var(--text-secondary)", background: "var(--surface-sunken)", borderRadius: 10, padding: "10px 12px" } }, "Rendering ", exporting, " export", prog > 0 ? " \xB7 " + Math.round(prog * 100) + "%" : "\u2026", ". This plays the take through once, so it takes about as long as the video."), exportErr && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: "var(--recording)", background: "var(--surface-sunken)", borderRadius: 10, padding: "10px 12px" } }, exportErr), /* @__PURE__ */ React.createElement(ExportRow, { label: "Original video", sub: ctClock(dur), ready: true, onClick: download }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Clean Take video", sub: ctClock(cleanDur) + " \xB7 renders on your phone", ready: !!(take == null ? void 0 : take.blob) && !exporting, onClick: () => exportClean(false) }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Captioned video", sub: segs.length ? "Burns in captions" : "Needs transcription", ready: segs.length > 0 && !exporting, onClick: () => exportClean(true) }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Audio only (WAV)", sub: "Extracts the audio", ready: !!(take == null ? void 0 : take.blob) && !exporting, onClick: exportAudio }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Transcript", sub: take && take.transcript ? "Ready" : "Needs transcription", ready: !!(take && take.transcript), onClick: () => {
     if (take && take.transcript) ctDownloadText(take.transcript, "transcript.txt");
-  } }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Captions (SRT)", sub: segs.length ? "Ready" : "Needs word timing", ready: segs.length > 0, onClick: () => ctDownloadText(ctSRT(segs), "captions.srt") }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Captions (VTT)", sub: segs.length ? "Ready" : "Needs word timing", ready: segs.length > 0, onClick: () => ctDownloadText(ctVTT(segs), "captions.vtt") }))), /* @__PURE__ */ React.createElement("div", { "data-testid": "ct-actions", style: { flexShrink: 0, padding: "10px 16px calc(10px + env(safe-area-inset-bottom, 12px))", background: "var(--bg-primary)", borderTop: "1px solid var(--border-subtle)", display: "flex", gap: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => setMoreOpen(true), "aria-label": "More actions", style: { width: 52, height: 52, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 24, lineHeight: 1, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", paddingBottom: 8 } }, "..."), /* @__PURE__ */ React.createElement(DSc.Button, { variant: "primary", size: "lg", fullWidth: true, onClick: save, iconLeft: /* @__PURE__ */ React.createElement(Icon, { name: "check", size: 18, color: "#fff" }) }, "Save Clean Take")), editMap && /* @__PURE__ */ React.createElement(EditMapSheet, { dur, removed, restored, onToggle: (id) => setRestored((r) => ({ ...r, [id]: !r[id] })), pauses: ctPauseDecisions(silences, preset), onClose: () => setEditMap(false) }), moreOpen && /* @__PURE__ */ React.createElement(
+  } }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Captions (SRT)", sub: segs.length ? "Ready" : "Needs word timing", ready: segs.length > 0, onClick: () => ctDownloadText(ctSRT(segs), "captions.srt") }), /* @__PURE__ */ React.createElement(ExportRow, { label: "Captions (VTT)", sub: segs.length ? "Ready" : "Needs word timing", ready: segs.length > 0, onClick: () => ctDownloadText(ctVTT(segs), "captions.vtt") }))));
+  const actions = /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { "data-testid": "ct-actions", style: { flexShrink: 0, padding: "10px 16px calc(10px + env(safe-area-inset-bottom, 12px))", background: "var(--bg-primary)", borderTop: "1px solid var(--border-subtle)", display: "flex", gap: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => setMoreOpen(true), "aria-label": "More actions", style: { width: 52, height: 52, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 24, lineHeight: 1, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", paddingBottom: 8 } }, "..."), /* @__PURE__ */ React.createElement(DSc.Button, { variant: "primary", size: "lg", fullWidth: true, onClick: save, iconLeft: /* @__PURE__ */ React.createElement(Icon, { name: "check", size: 18, color: "#fff" }) }, "Save Clean Take")));
+  const overlays = /* @__PURE__ */ React.createElement(React.Fragment, null, editMap && /* @__PURE__ */ React.createElement(EditMapSheet, { dur, removed, restored, onToggle: (id) => setRestored((r) => ({ ...r, [id]: !r[id] })), pauses: ctPauseDecisions(silences, preset), onClose: () => setEditMap(false), wide }), moreOpen && /* @__PURE__ */ React.createElement(
     CtMoreSheet,
     {
+      wide,
       onClose: () => setMoreOpen(false),
       onReset: () => {
         setPreset("Balanced");
@@ -1621,14 +1778,16 @@ function CleanTakeScreen({ app }) {
       }
     }
   ));
+  if (wide) return /* @__PURE__ */ React.createElement(Screen, null, /* @__PURE__ */ React.createElement("div", { "data-testid": "ct-desktop", style: { position: "absolute", inset: 0, display: "flex", flexDirection: "column" } }, /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, height: 60, display: "flex", alignItems: "center", gap: 12, padding: "0 18px", borderBottom: "1px solid var(--border-subtle)" } }, /* @__PURE__ */ React.createElement("button", { onClick: app.back, className: "pd-tap", "aria-label": "Back", "data-testid": "nav-back", style: iconBtn }, /* @__PURE__ */ React.createElement(Icon, { name: "back", size: 22, color: "var(--text-primary)" })), /* @__PURE__ */ React.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, take && take.title || "Take"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: "0.08em", color: "var(--text-muted)" } }, "CLEAN TAKE")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), /* @__PURE__ */ React.createElement("span", { "data-testid": "ct-save-status", "data-dirty": dirty ? "1" : "0", style: { fontSize: 12.5, color: dirty ? "var(--text-secondary)" : "var(--text-muted)" } }, dirty ? "Unsaved changes" : take && take.clean ? "Saved on this device" : "No edits yet"), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", "data-testid": "ct-save", onClick: save, disabled: !dirty, style: { height: 38, padding: "0 16px", borderRadius: 11, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 13.5, fontWeight: 600, cursor: dirty ? "pointer" : "default", opacity: dirty ? 1 : 0.5, fontFamily: "var(--font-sans)" } }, "Save"), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", "data-testid": "ct-export", onClick: () => setTab("Export"), style: { height: 38, padding: "0 18px", borderRadius: 11, border: "none", background: "var(--accent-primary)", color: "#fff", fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)" } }, "Export"), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => setMoreOpen(true), "aria-label": "More actions", style: iconBtn }, /* @__PURE__ */ React.createElement(Icon, { name: "more", size: 22, color: "var(--text-secondary)" }))), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minHeight: 0, display: "flex" } }, /* @__PURE__ */ React.createElement("div", { "data-testid": "ct-main", style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", padding: "18px 20px 16px", gap: 14 } }, previewBlock, hasVideo && /* @__PURE__ */ React.createElement(CtTimeline, { vref, dur, removed, pauses: allPauses, restored, onToggle: toggleRestore, trimStart, trimEnd, cleanDur })), /* @__PURE__ */ React.createElement("div", { "data-testid": "ct-side", style: { flexShrink: 0, width: "clamp(340px, 30vw, 420px)", borderLeft: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", minHeight: 0, background: "var(--bg-primary)" } }, tabsBar, panel))), overlays);
+  return /* @__PURE__ */ React.createElement(Screen, null, /* @__PURE__ */ React.createElement(NavHeader, { onBack: app.back, title: "Clean Take", action: hasVideo ? /* @__PURE__ */ React.createElement("button", { className: "pd-tap", style: iconBtn, onClick: download }, /* @__PURE__ */ React.createElement(Icon, { name: "download", size: 19, color: "var(--text-secondary)" })) : null }), previewBlock, tabsBar, panel, actions, overlays);
 }
 function CtCard({ title, hint, children }) {
   return /* @__PURE__ */ React.createElement("div", { style: { background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 16, padding: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14.5, fontWeight: 700, color: "var(--text-primary)" } }, title), hint && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 2, marginBottom: 12, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 } }, hint), !hint && /* @__PURE__ */ React.createElement("div", { style: { height: 12 } }), children);
 }
 const ctMiniBtn = { flex: 1, height: 40, borderRadius: 11, border: "1px solid var(--border-default)", background: "var(--surface-sunken)", color: "var(--text-primary)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-sans)" };
-function CtMoreSheet({ onClose, onReset, onDownload, onDelete }) {
+function CtMoreSheet({ onClose, onReset, onDownload, onDelete, wide }) {
   const row = (label, onClick, danger) => /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick, style: { width: "100%", textAlign: "left", height: 54, padding: "0 16px", borderRadius: 14, border: "none", background: "var(--surface-elevated)", color: danger ? "var(--recording)" : "var(--text-primary)", fontSize: 15.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement(Icon, { name: danger ? "trash" : label === "Reset Clean Take" ? "redo" : "download", size: 18, color: danger ? "var(--recording)" : "var(--text-secondary)" }), label);
-  return /* @__PURE__ */ React.createElement("div", { onClick: onClose, style: { position: "absolute", inset: 0, zIndex: 55, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), className: "pd-push", style: { width: "100%", background: "var(--bg-secondary)", borderTopLeftRadius: 22, borderTopRightRadius: 22, border: "1px solid var(--border-default)", borderBottom: "none", padding: "14px 16px calc(18px + env(safe-area-inset-bottom, 22px))" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 40, height: 5, borderRadius: 9, background: "var(--ink-600)", margin: "0 auto 16px" } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, onDownload && row("Download original", onDownload), row("Reset Clean Take", onReset), row("Delete take", onDelete, true)), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: onClose, style: { marginTop: 14, width: "100%", height: 50, borderRadius: 14, border: "1px solid var(--border-default)", background: "transparent", color: "var(--text-secondary)", fontSize: 15, fontWeight: 600, cursor: "pointer" } }, "Cancel")));
+  return /* @__PURE__ */ React.createElement("div", { onClick: onClose, style: { position: "absolute", inset: 0, zIndex: 55, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: wide ? "center" : "flex-end", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), role: "dialog", "aria-label": "More actions", className: "pd-push", style: { width: "100%", maxWidth: wide ? 440 : void 0, background: "var(--bg-secondary)", borderTopLeftRadius: 22, borderTopRightRadius: 22, borderBottomLeftRadius: wide ? 22 : 0, borderBottomRightRadius: wide ? 22 : 0, border: "1px solid var(--border-default)", borderBottom: wide ? "1px solid var(--border-default)" : "none", padding: "14px 16px calc(18px + env(safe-area-inset-bottom, 22px))" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 40, height: 5, borderRadius: 9, background: "var(--ink-600)", margin: "0 auto 16px" } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, onDownload && row("Download original", onDownload), row("Reset Clean Take", onReset), row("Delete take", onDelete, true)), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: onClose, style: { marginTop: 14, width: "100%", height: 50, borderRadius: 14, border: "1px solid var(--border-default)", background: "transparent", color: "var(--text-secondary)", fontSize: 15, fontWeight: 600, cursor: "pointer" } }, "Cancel")));
 }
 function Field({ label, hint, children }) {
   return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: "var(--text-primary)" } }, label), hint && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11.5, color: "var(--text-muted)" } }, hint)), children);
@@ -1636,9 +1795,9 @@ function Field({ label, hint, children }) {
 function ExportRow({ label, sub, ready, pending, note, onClick }) {
   return /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: ready ? onClick : void 0, style: { width: "100%", textAlign: "left", background: "var(--surface-elevated)", border: "1px solid var(--border-default)", borderRadius: 14, padding: 14, display: "flex", alignItems: "center", gap: 12, cursor: ready ? "pointer" : "default", opacity: pending ? 0.7 : 1 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 600, color: "var(--text-primary)" } }, label), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 2, fontSize: 12.5, color: "var(--text-muted)" } }, note || sub)), ready ? /* @__PURE__ */ React.createElement(Icon, { name: "download", size: 18, color: "var(--accent-primary)" }) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-muted)", letterSpacing: ".06em" } }, "SOON"));
 }
-function EditMapSheet({ dur, removed, restored, onToggle, pauses, onClose }) {
+function EditMapSheet({ dur, removed, restored, onToggle, pauses, onClose, wide }) {
   const segs = ctMerge(removed);
-  return /* @__PURE__ */ React.createElement("div", { onClick: onClose, style: { position: "absolute", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), className: "pd-push", style: { width: "100%", background: "var(--bg-secondary)", borderTopLeftRadius: 22, borderTopRightRadius: 22, border: "1px solid var(--border-default)", borderBottom: "none", padding: "14px 20px calc(20px + env(safe-area-inset-bottom, 22px))", maxHeight: "70%", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 40, height: 5, borderRadius: 9, background: "var(--ink-600)", margin: "0 auto 14px" } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 17, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 } }, "Edit Map"), /* @__PURE__ */ React.createElement("p", { style: { fontSize: 12.5, color: "var(--text-muted)", margin: "0 0 14px" } }, "Green is kept, red is removed. Tap a removed part to restore it."), /* @__PURE__ */ React.createElement("div", { style: { position: "relative", height: 26, borderRadius: 8, overflow: "hidden", background: "var(--success, #34C759)", marginBottom: 16 } }, segs.map((s, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { position: "absolute", top: 0, bottom: 0, left: s.start / dur * 100 + "%", width: Math.max(0.6, (s.end - s.start) / dur * 100) + "%", background: "var(--recording, #FF3B30)" } }))), pauses.length === 0 && /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13.5, color: "var(--text-muted)" } }, "No pauses detected to remove. Trims still apply."), pauses.map((p) => {
+  return /* @__PURE__ */ React.createElement("div", { onClick: onClose, style: { position: "absolute", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: wide ? "center" : "flex-end", justifyContent: "center" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), role: "dialog", "aria-label": "Edit Map", className: "pd-push", style: { width: "100%", maxWidth: wide ? 560 : void 0, background: "var(--bg-secondary)", borderTopLeftRadius: 22, borderTopRightRadius: 22, borderBottomLeftRadius: wide ? 22 : 0, borderBottomRightRadius: wide ? 22 : 0, border: "1px solid var(--border-default)", borderBottom: wide ? "1px solid var(--border-default)" : "none", padding: "14px 20px calc(20px + env(safe-area-inset-bottom, 22px))", maxHeight: "70%", overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 40, height: 5, borderRadius: 9, background: "var(--ink-600)", margin: "0 auto 14px" } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 17, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 } }, "Edit Map"), /* @__PURE__ */ React.createElement("p", { style: { fontSize: 12.5, color: "var(--text-muted)", margin: "0 0 14px" } }, "Green is kept, red is removed. Tap a removed part to restore it."), /* @__PURE__ */ React.createElement("div", { style: { position: "relative", height: 26, borderRadius: 8, overflow: "hidden", background: "var(--success, #34C759)", marginBottom: 16 } }, segs.map((s, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { position: "absolute", top: 0, bottom: 0, left: s.start / dur * 100 + "%", width: Math.max(0.6, (s.end - s.start) / dur * 100) + "%", background: "var(--recording, #FF3B30)" } }))), pauses.length === 0 && /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13.5, color: "var(--text-muted)" } }, "No pauses detected to remove. Trims still apply."), pauses.map((p) => {
     const kept = restored[p.id];
     return /* @__PURE__ */ React.createElement("div", { key: p.id, style: { display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: "1px solid var(--border-subtle)" } }, /* @__PURE__ */ React.createElement("span", { style: { width: 9, height: 9, borderRadius: 999, background: kept ? "var(--success, #34C759)" : "var(--recording, #FF3B30)", flexShrink: 0 } }), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, fontSize: 14.5, color: "var(--text-primary)" } }, p.label, " ", /* @__PURE__ */ React.createElement("span", { style: { color: "var(--text-muted)", fontSize: 12 } }, "at ", ctClock(p.start))), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: () => onToggle(p.id), style: { height: 32, padding: "0 12px", borderRadius: 999, border: "1px solid var(--border-default)", background: kept ? "var(--surface-raised)" : "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" } }, kept ? "Removed" : "Restore"));
   }), /* @__PURE__ */ React.createElement("button", { className: "pd-tap", onClick: onClose, style: { marginTop: 16, width: "100%", height: 46, borderRadius: 14, border: "none", background: "var(--accent-primary)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" } }, "Done")));
@@ -1941,6 +2100,7 @@ Object.assign(window, { OnboardingScreen, AccountScreen, UpgradeScreen });
 const FULLSCREEN = { signin: 1, script: 1, recordSetup: 1, takeReview: 1, meeting: 1, upgrade: 1 };
 const ROOTS = { library: LibraryScreen, meetings: MeetingsScreen, account: AccountScreen };
 const PUSHED = { signin: SignInScreen, script: ScriptScreen, recordSetup: RecordSetupScreen, takeReview: CleanTakeScreen, meeting: MeetingDetailScreen, upgrade: UpgradeScreen };
+const WIDE_FULL = { takeReview: 1 };
 const TABS = [
   { id: "library", label: "Library", icon: "library" },
   { id: "record", label: "Record", icon: "record" },
@@ -2000,6 +2160,7 @@ function SignInScreen({ app }) {
 }
 function PromptDropApp() {
   const data = useData();
+  const wide = usePdWide();
   const [onboarded, setOnboarded] = React.useState(() => {
     try {
       return localStorage.getItem("pd.onboarded") === "1";
@@ -2046,9 +2207,11 @@ function PromptDropApp() {
     const s = data.scripts[0];
     app.nav("recordSetup", s ? { id: s.id, title: s.title, lines: linesFromBody(s.body) } : { id: null, title: "Untitled", lines: [] });
   };
-  return /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0, overflow: "hidden", background: "var(--bg-primary)" } }, /* @__PURE__ */ React.createElement(Root, { app }), stack.map((entry, i) => {
+  const column = wide ? { position: "absolute", top: 20, bottom: 20, left: "50%", width: 460, marginLeft: -230, borderRadius: 30, overflow: "hidden", background: "var(--bg-primary)", boxShadow: "0 50px 130px -30px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06)" } : { position: "absolute", inset: 0, overflow: "hidden", background: "var(--bg-primary)" };
+  const fullEntries = wide ? stack.map((entry, i) => ({ entry, i })).filter((x) => WIDE_FULL[x.entry.screen] && PUSHED[x.entry.screen]) : [];
+  return /* @__PURE__ */ React.createElement("div", { "data-testid": "app-shell", "data-wide": wide ? "1" : "0", style: { position: "absolute", inset: 0, overflow: "hidden", background: wide ? "radial-gradient(1200px 700px at 50% -10%, rgba(76,141,255,0.14), transparent 60%), var(--bg-secondary, #07080b)" : "var(--bg-primary)" } }, wide && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 22, left: 30, fontWeight: 800, fontSize: 18, letterSpacing: "-.02em", color: "var(--text-primary)" } }, "prompt", /* @__PURE__ */ React.createElement("span", { style: { color: "var(--accent-primary)" } }, "drop")), /* @__PURE__ */ React.createElement("div", { style: column }, /* @__PURE__ */ React.createElement(Root, { app }), stack.map((entry, i) => {
     const Comp = PUSHED[entry.screen];
-    if (!Comp) return null;
+    if (!Comp || wide && WIDE_FULL[entry.screen]) return null;
     return /* @__PURE__ */ React.createElement("div", { key: i, className: "pd-push", style: { position: "absolute", inset: 0, zIndex: 10 + i } }, /* @__PURE__ */ React.createElement(Comp, { app: { ...app, params: entry.params || {} } }));
   }), showTabBar && /* @__PURE__ */ React.createElement(TabBar, { tab, onTab: app.setTab, onRecord }), live && /* @__PURE__ */ React.createElement(LiveSession, { cfg: live, onExit: () => setLive(null), onComplete: (res) => {
     setLive(null);
@@ -2059,7 +2222,10 @@ function PromptDropApp() {
     setMeeting(false);
     app.reload();
     if (id) app.nav("meeting", { id });
-  } }), toast && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: 16, right: 16, bottom: showTabBar ? 110 : 40, zIndex: 40, display: "flex", justifyContent: "center", pointerEvents: "none" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 16px", background: "var(--surface-raised)", border: "1px solid var(--border-default)", borderRadius: 999, boxShadow: "var(--shadow-floating)" } }, /* @__PURE__ */ React.createElement(Icon, { name: "checkCircle", size: 17, color: "var(--success)" }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: "var(--text-primary)" } }, toast))));
+  } }), toast && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: 16, right: 16, bottom: showTabBar ? 110 : 40, zIndex: 40, display: "flex", justifyContent: "center", pointerEvents: "none" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 16px", background: "var(--surface-raised)", border: "1px solid var(--border-default)", borderRadius: 999, boxShadow: "var(--shadow-floating)" } }, /* @__PURE__ */ React.createElement(Icon, { name: "checkCircle", size: 17, color: "var(--success)" }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: "var(--text-primary)" } }, toast)))), fullEntries.map(({ entry, i }) => {
+    const Comp = PUSHED[entry.screen];
+    return /* @__PURE__ */ React.createElement("div", { key: "full-" + i, style: { position: "absolute", inset: 0, zIndex: 60 + i, background: "var(--bg-primary)" } }, /* @__PURE__ */ React.createElement(Comp, { app: { ...app, params: entry.params || {} } }));
+  }));
 }
 window.PromptDropApp = PromptDropApp;
 class PDErrorBoundary extends React.Component {

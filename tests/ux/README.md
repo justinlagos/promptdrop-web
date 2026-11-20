@@ -24,7 +24,8 @@ on pushes to `main` (`.github/workflows/ux-regression.yml`).
 | --- | --- |
 | `prompt-preferences.spec.js` | Font size and scroll speed reset between takes, after navigation or after a refresh. Also: the prompter ignoring sizes above 40px. |
 | `clean-take-mobile.spec.js` | Clean Take controls hidden on phones: preview too tall, controls under the Save bar, first control below the fold. Seven phone sizes. |
-| `clean-take-desktop.spec.js` | Desktop users getting a details-only screen instead of the editor. |
+| `clean-take-desktop.spec.js` | Desktop users getting a details-only screen, or the phone editor in a narrow frame, instead of a desktop editor: large preview, tools beside it, edit map below. |
+| `clean-take-edits.spec.js` | Saved edits not coming back on reopen. Pause detection marking steady audio as one long pause. Clean length shown as 0:00. |
 | `bundle.spec.js` | `public/m/app.bundle.js` not rebuilt after its sources changed. |
 | `prompter-fit.spec.js` | Current prompter line cut off inside the drop. Switched off, see below. |
 
@@ -32,10 +33,6 @@ on pushes to `main` (`.github/workflows/ux-regression.yml`).
 
 These are written down as tests so they are not forgotten.
 
-- **Desktop editor layout** (`clean-take-desktop.spec.js`, marked `test.fail`). Desktop
-  shows the phone editor in a 460px frame. The test describes the target layout and is
-  expected to fail. When the desktop editor ships it will start passing, Playwright will
-  flag that, and the `test.fail` line must be removed.
 - **Settings sync across devices** (`prompt-preferences.spec.js`, `test.fixme`). Settings
   are saved per device. Needs account-backed storage and a test account.
 - **Prompter line clipping** (`prompter-fit.spec.js`, `test.fixme`). Long paragraphs can be
@@ -46,7 +43,9 @@ These are written down as tests so they are not forgotten.
 - After editing anything in `public/m/app/` or `public/m/frames/`, run `npm run build:m`.
 - Tests find elements by `data-testid`. If you rename or remove one, update the tests in
   the same change. Current hooks: `record-setup`, `prompt-speed`, `prompt-font`,
-  `record-start`, `live-session`, `live-line-cur`, `live-stop`, `nav-back`, `ct-preview`,
-  `ct-tabs`, `ct-tab-<Name>`, `ct-panel`, `ct-actions`.
+  `record-start`, `live-session`, `live-line-cur`, `live-stop`, `nav-back`, `app-shell`,
+  `ct-preview`, `ct-tabs`, `ct-tab-<Name>`, `ct-panel`, `ct-actions` (phone), and on desktop
+  `ct-desktop`, `ct-main`, `ct-side`, `ct-timeline`, `ct-timeline-bar`, `ct-timeline-pause`,
+  `ct-save-status`, `ct-save`, `ct-export`.
 - Fixed a UX bug? Add a test here that fails without the fix, and check that it does.
 - Do not loosen a threshold to make a failing test pass. Fix the layout.
