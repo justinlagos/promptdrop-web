@@ -5,6 +5,7 @@ import { WorkspaceProvider } from "./context/WorkspaceContext.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
 import AuthModal from "./components/AuthModal.jsx";
 import { TopNav, Footer, MobileBottomNav } from "./components/Chrome.jsx";
+import { SmoothScroll } from "./motion/smoothScroll.js";
 import Landing from "./pages/Landing.jsx";
 import Pricing from "./pages/Pricing.jsx";
 import Download from "./pages/Download.jsx";
@@ -85,6 +86,7 @@ function Shell() {
 
   return (
     <>
+      <SmoothScroll />
       <TopNav />
       <AuthModal />
       <Routes>

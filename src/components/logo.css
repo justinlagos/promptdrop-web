@@ -1,0 +1,65 @@
+/* PromptDrop logo. Still by default; the nav version animates (see Logo.jsx). */
+.logo{position:relative;display:inline-flex;align-items:center}
+.logo__wrap{position:relative;display:inline-flex;flex:none}
+.logo__mark{width:30px;height:30px;border-radius:8px;flex:none;overflow:visible}
+.logo--live .logo__mark{width:40px;height:40px;border-radius:11px}
+@media (max-width:520px){.logo--live .logo__mark{width:36px;height:36px}}
+.brand:focus-visible{outline:2px solid var(--accent-primary);outline-offset:4px;border-radius:10px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.logo__lens{fill:#F4F4F5;transition:fill .25s ease}
+.logo__lens-ring{stroke:rgba(244,244,245,.28);transition:stroke .25s ease}
+.logo__line-track{stroke:rgba(76,141,255,.2)}
+.logo__line{stroke-dasharray:var(--p,100) 100;transition:stroke-dasharray .18s linear,opacity .2s ease}
+.logo__smile{opacity:0;transition:opacity .2s ease}
+
+/* moving parts */
+.logo__drop{transform-box:fill-box;transform-origin:50% 0;transform:scaleY(var(--sq,1))}
+.logo__eye{transform-box:fill-box;transform-origin:50% 50%;transition:transform .09s ease}
+/* Pupils: at rest (--home 1) both look up and in, at the lens. Otherwise they follow. */
+.logo__pupil{fill:#0B0B0E;transform:translate(calc(var(--ex,0) * 1px + var(--hx) * var(--home,1) * 1px),calc(var(--ey,0) * 1px + var(--hy) * var(--home,1) * 1px))}
+.logo__eye--l .logo__pupil{--hx:8;--hy:-11}
+.logo__eye--r .logo__pupil{--hx:-8;--hy:-11}
+
+/* blink, wink */
+.logo[data-blink="1"] .logo__eye{transform:scaleY(.1)}
+.logo[data-wink="1"] .logo__eye--r{transform:scaleY(.1)}
+
+/* hover: caught looking. The lens goes red like a recording light. */
+.logo[data-motion="on"] .brand:hover .logo__lens,.logo[data-motion="on"] .brand:focus-visible .logo__lens{fill:#FF3B30;animation:logo-rec 1.1s ease-in-out infinite}
+.logo[data-motion="on"] .brand:hover .logo__lens-ring{stroke:rgba(255,59,48,.45)}
+@keyframes logo-rec{50%{opacity:.35}}
+
+/* smiling at a main button */
+.logo[data-mood="smile"] .logo__line,.logo[data-mood="smile"] .logo__line-track{opacity:0}
+.logo[data-mood="smile"] .logo__smile{opacity:1}
+
+/* talking: the script line runs like a line being read */
+.logo[data-talk="1"] .logo__line{animation:logo-talk .42s ease-in-out infinite alternate}
+@keyframes logo-talk{from{stroke-dasharray:30 100}to{stroke-dasharray:92 100}}
+
+/* asleep, and the little jump on waking */
+.logo[data-state="asleep"] .logo__eye{transform:scaleY(.1)}
+.logo[data-state="asleep"] .logo__mark{animation:logo-breathe 3.2s ease-in-out infinite}
+.logo[data-state="waking"] .logo__mark{animation:logo-jump .5s cubic-bezier(.3,1.6,.5,1)}
+@keyframes logo-breathe{50%{transform:scale(1.035)}}
+@keyframes logo-jump{0%{transform:translateY(0)}35%{transform:translateY(-5px) rotate(-6deg)}70%{transform:translateY(1px) rotate(3deg)}100%{transform:none}}
+.logo__zzz{position:absolute;right:-7px;top:-9px;font:700 11px var(--font-mono);color:var(--text-muted);opacity:0;pointer-events:none}
+.logo[data-state="asleep"] .logo__zzz{animation:logo-zzz 2.6s ease-in-out infinite}
+@keyframes logo-zzz{0%{opacity:0;transform:translate(0,4px) scale(.7)}40%{opacity:.9}100%{opacity:0;transform:translate(6px,-10px) scale(1.15)}}
+
+/* wordmark: the letters of "drop" drop */
+.brand__drop{color:var(--text-muted);display:inline-flex}
+.brand__drop i{font-style:normal;display:inline-block}
+.logo[data-motion="on"] .brand:hover .brand__drop i{animation:logo-letter .5s cubic-bezier(.3,1.5,.5,1) both;animation-delay:calc(var(--i) * 55ms)}
+@keyframes logo-letter{0%{transform:translateY(0)}40%{transform:translateY(5px)}100%{transform:translateY(0)}}
+
+/* speaking tip */
+.logo__tip{position:absolute;left:0;top:calc(100% + 12px);z-index:60;max-width:min(280px,78vw);width:max-content;padding:10px 13px;border-radius:12px 12px 12px 4px;background:var(--surface-elevated);border:1px solid var(--border-default);box-shadow:0 14px 40px rgba(0,0,0,.35);font-size:13px;line-height:1.4;color:var(--text-primary);opacity:0;transform:translateY(-6px) scale(.97);transform-origin:10px 0;pointer-events:none;transition:opacity .18s ease,transform .22s cubic-bezier(.3,1.4,.5,1)}
+.logo__tip.is-open{opacity:1;transform:none}
+.logo__tip:empty{display:none}
+
+@media (prefers-reduced-motion:reduce){
+  .logo__line{transition:none}
+  .logo__tip{transition:none}
+}
