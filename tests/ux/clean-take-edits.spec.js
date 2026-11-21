@@ -61,7 +61,7 @@ test("the clean length shown is the real kept length, never 0:00 for a take with
   expect(after, "clean take is not longer than the original").toBeLessThanOrEqual(before);
 });
 
-test("saved edits all come back when the take is reopened", async ({ page }) => {
+test("edits save themselves and all come back when the take is reopened", async ({ page }) => {
   let app = await openEditor(page);
 
   await app.getByTestId("ct-tab-Clean").click();
@@ -69,12 +69,11 @@ test("saved edits all come back when the take is reopened", async ({ page }) => 
   await app.getByTestId("ct-panel").getByText("Social pace", { exact: true }).click();
   await expect(app.getByText("Playing at 1.25x")).toBeVisible();
   await app.getByTestId("ct-tab-Style").click();
-  const brightness = app.getByTestId("ct-panel").locator('input[type="range"]').first();
-  await brightness.fill("120");
-  await app.getByRole("button", { name: "Save Clean Take" }).click();
-  await expect(app.getByText("Clean Take saved")).toBeVisible();
+  await app.getByTestId("ct-panel").locator('input[type="range"]').first().fill("120");
+  // No Save button. The status reports the save.
+  await expect(app.getByTestId("ct-save-status")).toHaveAttribute("data-state", "saved");
+  await expect(app.getByTestId("ct-save-status")).toHaveAttribute("data-dirty", "0");
 
-  // Close the browser tab's state completely and come back.
   await page.reload();
   app = page.mainFrame();
   await openTakeEditor(app);
@@ -85,8 +84,42 @@ test("saved edits all come back when the take is reopened", async ({ page }) => 
   await expect(app.getByTestId("ct-panel").locator('input[type="range"]').first(), "brightness restored").toHaveValue("120");
   const filter = await app.getByTestId("ct-preview").locator("video").evaluate((v) => getComputedStyle(v).filter);
   expect(filter, "restored brightness is applied to the preview").toContain("brightness(1.2)");
-  const saved = await app.evaluate(async () => (await PDsvc.getTake((await PDsvc.takes())[0].id)).clean);
-  expect(saved, "stored edit decisions").toMatchObject({ preset: "Tight", speed: "Social pace", style: { b: 120 } });
+  const stored = await app.evaluate(async () => PDsvc.getEdits((await PDsvc.takes())[0].id));
+  expect(stored, "stored edit decisions are versioned").toMatchObject({ v: 1, decisions: { preset: "Tight", speed: "Social pace", style: { b: 120 } } });
+});
+
+test("a change made just before leaving the editor is not lost", async ({ page }) => {
+  let app = await openEditor(page);
+  await app.getByTestId("ct-tab-Clean").click();
+  await app.getByTestId("ct-panel").getByText("Social pace", { exact: true }).click();
+  await app.getByTestId("nav-back").last().click(); // leave straight away, before the autosave delay
+  await openTakeEditor(app);
+  await app.getByTestId("ct-tab-Clean").click();
+  await expect(app.getByText("Playing at 1.25x"), "the last edit was saved on the way out").toBeVisible();
+});
+
+test("saving an edit does not rewrite or change the recording", async ({ page }) => {
+  const app = await openEditor(page);
+  const before = await app.evaluate(async () => { const t = await PDsvc.getTake((await PDsvc.takes())[0].id); return { size: t.blob.size, type: t.blob.type }; });
+  await app.getByTestId("ct-tab-Style").click();
+  await app.getByTestId("ct-panel").locator('input[type="range"]').first().fill("115");
+  await expect(app.getByTestId("ct-save-status")).toHaveAttribute("data-state", "saved");
+  const after = await app.evaluate(async () => { const t = await PDsvc.getTake((await PDsvc.takes())[0].id); return { size: t.blob.size, type: t.blob.type, hasCleanCopy: !!t.clean }; });
+  expect(after.size, "original recording untouched").toBe(before.size);
+  expect(after.hasCleanCopy, "edits are stored apart from the recording").toBe(false);
+});
+
+test("phone: undo and redo work from the bottom bar", async ({ page }) => {
+  const app = await openEditor(page);
+  await expect(app.getByTestId("ct-undo")).toBeDisabled();
+  await app.getByTestId("ct-tab-Clean").click();
+  await app.getByTestId("ct-panel").getByText("Social pace", { exact: true }).click();
+  await expect(app.getByText("Playing at 1.25x")).toBeVisible();
+  await expect(app.getByTestId("ct-save-status")).toHaveAttribute("data-state", "saved");
+  await app.getByTestId("ct-undo").click();
+  await expect(app.getByText("Playing at 1.00x")).toBeVisible();
+  await app.getByTestId("ct-redo").click();
+  await expect(app.getByText("Playing at 1.25x")).toBeVisible();
 });
 
 // Gate: the exported file contains the edits. These call the same render function the

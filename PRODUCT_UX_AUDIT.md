@@ -2,7 +2,7 @@
 
 Scope so far: prompt settings, mobile Clean Take controls, the desktop editor, and whether
 edits and exports are real. Not yet covered: Takes Library, Script Studio, Meetings, the
-mobile tool rail redesign, autosave and undo. Sign-in is not required by decision, so the
+mobile tool rail redesign. Sign-in is not required by decision, so the
 brief's account and cross-device sync sections do not apply. Each row was checked against the code and has a test in `tests/ux`.
 
 | Issue | Impact | Root cause | Decision | Verified by |
@@ -16,6 +16,7 @@ brief's account and cross-device sync sections do not apply. Each row was checke
 | Whole take marked as one pause, clean length shown as 0:00 | Steady speech would be cut away | Silence threshold was 1.8 times the median loudness, so evenly loud audio sat below its own threshold | Fixed. Threshold now comes from the quietest tenth and the loud level, capped at about a third of the loud level. | Same file: tone, gap, tone finds one pause; steady tone finds none. Fails with the old rule. |
 | Saved edits not restored | Reopening a take lost speed, trim, kept pauses and colour settings | Load restored only the pause preset | Fixed. All saved decisions are restored. Desktop shows Unsaved or Saved honestly. | Same file, save then reload then reopen. Fails when the old load is put back. |
 | Wording claimed export was not connected | Mistrust; told users colour and captions were not exported when they are | Stale copy | Fixed. | Read in the UI. |
-| Long prompter lines cut off inside the drop | Speaker loses words | Four lines of different sizes centred in a fixed-height box with overflow hidden | Not fixed. More visible now that large sizes work. | `prompter-fit.spec.js`, switched off until fixed. |
-| Settings do not follow the account | New device starts from defaults | No account-backed preferences store | Not fixed. | `test.fixme` in `prompt-preferences.spec.js`. |
+| Long prompter lines cut off inside the drop | Speaker lost words mid-sentence | Four lines of different sizes centred in a fixed-height box with overflow hidden. Also the text remounted every second because the line component was redefined on each render. | Fixed. The prompter measures the drop, gives the line being read up to four rows, and splits longer paragraphs into chunks that fit. Neighbouring lines are one-row previews. Words too long for the drop are shown in pieces. | `prompter-fit.spec.js`: 20 size and screen combinations, every chunk checked. Fails when fitting is removed. |
+| Edits only saved on pressing Save, and each save rewrote the whole video file | Lost edits; slow saves on long takes | Edit decisions were stored inside the take record next to the video blob | Fixed. Decisions live in their own small versioned store and save 0.45s after the last change, and on leaving. Undo and redo (buttons, Ctrl or Cmd+Z). Primary action is now Export. | `clean-take-edits.spec.js` and `clean-take-desktop.spec.js`. |
+| Settings and edits do not follow the user to another device | New device starts fresh | No account by decision | Not applicable. | None. |
 | Stale phone bundle | Fixed code not served | Bundle was built by hand with no script in the repo | Fixed. `npm run build:m`, plus a test that fails when the bundle is stale. | `bundle.spec.js` |
