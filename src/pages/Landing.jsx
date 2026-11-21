@@ -3,6 +3,16 @@ import { Link } from "react-router-dom";
 import Drop from "../components/Drop.jsx";
 import { PLANS } from "../services/planService.js";
 import { useIsMobile } from "../mobile/useIsMobile.js";
+import { useReveal, useParallax } from "../motion/smoothScroll.js";
+
+// What the hero prompter reads. Kept honest: it only describes what the visitor can see.
+const DEMO_LINES = [
+  "Hi, I’m Justin.",
+  "This line sits right beside my camera.",
+  "So my eyes stay on you, not on a script.",
+  "Change the speed and the size below.",
+  "Then try it with your own words.",
+];
 
 const I = (d) => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">{d}</svg>;
 
@@ -16,10 +26,12 @@ function DownloadBtn() {
 
 export default function Landing() {
   const mobile = useIsMobile();
+  useReveal([]);
+  useParallax([]);
   return (
     <main>
       {/* HERO */}
-      <header style={{ textAlign: "center", padding: "72px 0 24px", position: "relative" }}>
+      <header className="hero" style={{ textAlign: "center", padding: "72px 0 24px", position: "relative" }}>
         <div className="wrap">
           <span className="badge badge--accent" style={{ marginBottom: 22 }}><i style={{ width: 6, height: 6, borderRadius: 9, background: "var(--accent-primary)" }} /> Camera-level teleprompter + meeting overlay</span>
           <h1 style={{ fontSize: "clamp(36px,6vw,66px)", fontWeight: 800, letterSpacing: "-.038em", lineHeight: 1.02, maxWidth: "15ch", margin: "12px auto 0" }}>
@@ -35,21 +47,21 @@ export default function Landing() {
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 16, fontFamily: "var(--font-mono)", letterSpacing: ".02em" }}>
             {mobile ? "Runs in your browser · no sign-up needed" : "Runs in your browser · no sign-up needed · desktop overlay for meetings"}
           </p>
-          <div style={{ marginTop: 40 }}><Drop scriptLine="Hi, I’m Justin." /></div>
+          <div style={{ marginTop: 40 }}><Drop lines={DEMO_LINES} live /></div>
         </div>
       </header>
 
       {/* HOW IT WORKS */}
       <section className="block" id="how"><div className="wrap">
         <div className="eyebrow" style={{ marginBottom: 12 }}>How PromptDrop works</div>
-        <h2>Three steps to a natural take.</h2>
+        <h2 data-reveal>Three steps to a natural take.</h2>
         <div className="grid3" style={{ marginTop: 44 }}>
           {[
             [I(<><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></>), "Write or paste your script", "Bring text from anywhere or write it in the studio. Pause markers and reading time are built in."],
             [I(<><rect x="2" y="6" width="14" height="12" rx="2.5" /><path d="m22 8-6 4 6 4V8Z" /></>), "Align the drop near your camera", "Position the black drop right by your lens so your eyes never drift off camera."],
             [I(<polyline points="20 6 9 17 4 12" />), "Read, record, review, improve", "Prompt at your pace, record the take, and review playback, all on your device."],
           ].map(([ic, t, d], i) => (
-            <div key={i} className="feat"><div className="feat__ic">{ic}</div><h3>{t}</h3><p>{d}</p></div>
+            <div key={i} className="feat" data-reveal style={{ "--i": i }}><div className="feat__ic">{ic}</div><h3>{t}</h3><p>{d}</p></div>
           ))}
         </div>
       </div></section>
@@ -97,7 +109,7 @@ export default function Landing() {
           {["creator_pro", "studio_pro"].map((id) => {
             const p = PLANS[id];
             return (
-              <div key={id} className="card" style={{ padding: 22, borderColor: p.badge ? "rgba(76,141,255,.4)" : undefined }}>
+              <div key={id} className="card" data-reveal style={{ padding: 22, borderColor: p.badge ? "rgba(76,141,255,.4)" : undefined }}>
                 <div style={{ fontWeight: 700 }}>{p.name}</div>
                 <div className="muted" style={{ fontSize: 13, color: "var(--text-muted)" }}>{p.blurb}</div>
                 <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-.03em", margin: "12px 0 2px" }}>{p.price}<span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-muted)" }}>{p.cycle}</span></div>
@@ -113,8 +125,8 @@ export default function Landing() {
       <section className="block" style={{ paddingTop: 0 }}><div className="wrap" style={{ maxWidth: 760 }}>
         <div className="eyebrow" style={{ marginBottom: 16 }}>FAQ</div>
         {FAQ.map(([q, a], i) => (
-          <details key={i} style={{ borderBottom: "1px solid var(--border-subtle)", padding: "16px 0" }}>
-            <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 16, listStyle: "none" }}>{q}</summary>
+          <details key={i} className="faq" style={{ borderBottom: "1px solid var(--border-subtle)", padding: "16px 0" }}>
+            <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 16, listStyle: "none" }}>{q}<span className="faq__mark" aria-hidden="true" /></summary>
             <p style={{ color: "var(--text-secondary)", fontSize: 15, lineHeight: 1.6, marginTop: 10 }}>{a}</p>
           </details>
         ))}
@@ -122,7 +134,7 @@ export default function Landing() {
 
       {/* FINAL CTA */}
       <section className="block" style={{ textAlign: "center", paddingTop: 0 }}><div className="wrap">
-        <h2 style={{ margin: "0 auto" }}>Keep your eyes on the lens.</h2>
+        <h2 style={{ margin: "0 auto" }} data-reveal>Keep your eyes on the lens.</h2>
         <p className="lead" style={{ margin: "12px auto 26px" }}>{mobile ? "Open it in your browser. No install, no sign-up." : "Open it in your browser with no sign-up, or get the desktop app for meetings and presentations."}</p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
           <Link className="btn btn--primary btn--lg" to="/app">{mobile ? "Open the app" : "Open the teleprompter"}</Link>
@@ -136,12 +148,12 @@ export default function Landing() {
 function Split({ id, eyebrow, title, body, side, reverse }) {
   return (
     <section className="block split" id={id} style={{ paddingTop: 24 }}><div className="wrap" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 48, alignItems: "center" }}>
-      <div style={{ order: reverse ? 2 : 1 }}>
+      <div style={{ order: reverse ? 2 : 1 }} data-reveal>
         <div className="eyebrow" style={{ marginBottom: 12 }} dangerouslySetInnerHTML={{ __html: eyebrow }} />
         <h2>{title}</h2>
         <p className="lead">{body}</p>
       </div>
-      <div style={{ order: reverse ? 1 : 2 }}>{side}</div>
+      <div style={{ order: reverse ? 1 : 2 }} data-reveal><div data-parallax="0.05">{side}</div></div>
       <style>{`@media (max-width:860px){.split .wrap{grid-template-columns:1fr!important}.split [style*="order: 2"],.split [style*="order:2"]{order:0!important}}`}</style>
     </div></section>
   );

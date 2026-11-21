@@ -43,6 +43,7 @@
 
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+html.lenis{scroll-behavior:auto} /* Lenis does the smoothing; two smoothers fight each other */
 body{font-family:var(--font-sans);background:var(--bg-primary);color:var(--text-primary);-webkit-font-smoothing:antialiased;line-height:1.5;overflow-x:hidden}
 a{color:inherit;text-decoration:none}
 img,svg{display:block}
@@ -71,9 +72,8 @@ img,svg{display:block}
 .nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);background:rgba(10,10,11,.72);border-bottom:1px solid var(--border-subtle)}
 .nav__in{display:flex;align-items:center;justify-content:space-between;height:var(--nav-h)}
 .brand{display:flex;align-items:center;gap:10px}
-.brand__glyph{width:30px;height:30px;border-radius:8px;flex:none}
 .brand__txt{font-family:var(--font-mono);font-weight:700;font-size:15px;letter-spacing:-.01em}
-.brand__txt span{color:var(--text-muted)}
+.brand__txt>span{color:var(--text-muted)}
 .nav__links{display:flex;gap:28px;align-items:center}
 .nav__links a{font-size:14px;color:var(--text-secondary);font-weight:500}
 .nav__links a:hover{color:var(--text-primary)}
@@ -210,3 +210,55 @@ body:has(.mshell){padding-bottom:0!important}
 .tp__bar--hidden{opacity:0;transform:translate(-50%,12px);pointer-events:none}
 .tp__btn{width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center}
 .tp__play{width:58px;height:58px;border-radius:50%;border:none;background:var(--accent-primary,#4C8DFF);color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center}
+
+/* ---- marketing motion ---------------------------------------------------- */
+.nav{transition:background .25s ease,box-shadow .25s ease,border-color .25s ease}
+.nav--scrolled{background:rgba(10,10,11,.9);box-shadow:0 10px 30px -18px rgba(0,0,0,.8)}
+[data-theme="light"] .nav--scrolled{background:rgba(255,255,255,.94);box-shadow:0 10px 30px -18px rgba(0,0,0,.25)}
+.nav__links a{position:relative;transition:color .15s ease}
+.nav__links a::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:2px;border-radius:2px;background:var(--accent-primary);transform:scaleX(0);transform-origin:0 50%;transition:transform .22s ease}
+.nav__links a:hover::after,.nav__links a:focus-visible::after{transform:scaleX(1)}
+
+/* buttons respond to touch and pointer */
+.btn{transition:transform .14s ease,filter .15s ease,background .15s ease,box-shadow .2s ease}
+.btn--lg:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(0) scale(.97)}
+.btn:focus-visible{outline:2px solid var(--accent-primary);outline-offset:3px}
+
+/* hero comes in once, in order */
+.hero .badge,.hero h1,.hero p,.hero .wrap>div{animation:hero-in .6s cubic-bezier(.2,.8,.2,1) both}
+.hero h1{animation-delay:.06s}.hero p{animation-delay:.12s}.hero .wrap>div{animation-delay:.18s}
+@keyframes hero-in{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+/* sections fade up as they arrive. Only hidden once the page script has switched this on. */
+.js-reveal [data-reveal]{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .7s cubic-bezier(.2,.8,.2,1);transition-delay:calc(var(--i,0) * 80ms)}
+.js-reveal [data-reveal].is-in{opacity:1;transform:none}
+[data-parallax]{will-change:transform}
+
+.feat{transition:transform .2s ease,border-color .2s ease}
+.feat:hover{transform:translateY(-3px);border-color:var(--border-strong)}
+.feat__ic{transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
+.feat:hover .feat__ic{transform:scale(1.08) rotate(-4deg)}
+
+/* FAQ: a mark that turns, and an answer that eases in */
+.faq summary{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.faq summary::-webkit-details-marker{display:none}
+.faq__mark{flex:none;width:14px;height:14px;position:relative}
+.faq__mark::before,.faq__mark::after{content:"";position:absolute;left:0;right:0;top:6px;height:2px;border-radius:2px;background:var(--text-muted);transition:transform .25s ease}
+.faq__mark::after{transform:rotate(90deg)}
+.faq[open] .faq__mark::after{transform:rotate(0)}
+.faq[open] p{animation:hero-in .3s ease both}
+.faq summary:focus-visible{outline:2px solid var(--accent-primary);outline-offset:4px;border-radius:6px}
+
+@media (prefers-reduced-motion:reduce){
+  .js-reveal [data-reveal]{opacity:1;transform:none}
+  [data-parallax]{transform:none!important}
+}
+
+/* phone nav: logo, wordmark and the one main button. Nothing runs off the edge. */
+.brand__txt{white-space:nowrap}
+@media (max-width:560px){
+  .nav__theme,.nav__cta .btn--ghost{display:none}
+  .nav__cta .btn{height:40px;padding:0 14px;font-size:14px}
+}
+.foot__theme{margin-top:14px}
