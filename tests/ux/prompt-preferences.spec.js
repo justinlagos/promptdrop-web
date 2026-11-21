@@ -78,8 +78,3 @@ test("every font size on the slider is the size the prompter shows", async ({ pa
   const px = await app.getByTestId("live-line-cur").first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
   expect(px).toBe(64);
 });
-
-// Known gap. Settings are saved per device only: there is no account-backed copy yet.
-// When that is built, give this test two browser contexts signed in to one test account
-// and remove the fixme.
-test.fixme("saved font size and speed follow the account to a second device", async () => {});

@@ -65,8 +65,106 @@ function RecordSetupScreen({ app }) {
   );
 }
 
+// ---- Fitting script text to the drop --------------------------------------
+// The drop has a fixed height. A long paragraph at a large font does not fit, and used to
+// be cut off top and bottom. Instead: work out how many rows of the current line fit,
+// then split long paragraphs into chunks of at most that many rows. No words are dropped.
+const PD_LINE_HEIGHT = 1.34;
+const PD_LINE_PAD = 12; // 6px above and below each line
+let _pdMeasureCtx = null;
+function pdTextWidth(text, font) {
+  try {
+    if (!_pdMeasureCtx) _pdMeasureCtx = document.createElement('canvas').getContext('2d');
+    _pdMeasureCtx.font = '600 ' + font + 'px Manrope, system-ui, -apple-system, "Segoe UI", sans-serif';
+    return _pdMeasureCtx.measureText(text).width - 0.01 * font * text.length; // letter-spacing -0.01em
+  } catch (e) { return text.length * font * 0.56; }
+}
+// How the drop is laid out for a given size: which neighbouring lines are shown and how
+// many rows the current line may use. Neighbours are always one row each.
+function pdPromptLayout({ font, boxW, boxH, follow }) {
+  const row = font * PD_LINE_HEIGHT;
+  const adjH = Math.round(font * 0.75) * PD_LINE_HEIGHT + PD_LINE_PAD;
+  const farH = Math.round(font * 0.6) * PD_LINE_HEIGHT + PD_LINE_PAD;
+  const hint = follow ? 30 : 0;
+  const room = (reserved) => Math.floor((boxH - hint - reserved - PD_LINE_PAD) / row);
+  // The line being read comes first. Take the richest layout that gives it three rows;
+  // if none does, take whichever gives it the most (ties go to the richer layout).
+  const options = [
+    { showFar: true, showAdj: true, rows: room(farH * 2 + adjH) },
+    { showFar: false, showAdj: true, rows: room(adjH) },
+    { showFar: false, showAdj: false, rows: room(0) },
+  ];
+  let pick = options.find((o) => o.rows >= 3);
+  if (!pick) pick = options.reduce((best, o) => (o.rows > best.rows ? o : best), options[0]);
+  return { showFar: pick.showFar, showAdj: pick.showAdj, maxRows: Math.max(1, Math.min(pick.rows, 4)), width: boxW };
+}
+// Rows a run of words takes when wrapped at this width. A word wider than the box is
+// broken across rows by the browser; those rows hold slightly less, so count them at 90%.
+function pdWrapRows(words, font, width) {
+  const space = pdTextWidth(' ', font) || font * 0.28;
+  let rows = 1, cur = 0;
+  for (const w of words) {
+    const ww = pdTextWidth(w, font);
+    if (cur > 0 && cur + space + ww > width) { rows++; cur = 0; }
+    if (ww > width) { const extra = Math.ceil(ww / (width * 0.9)) - 1; rows += extra; cur = Math.max(1, ww - extra * width * 0.9); }
+    else cur = cur > 0 ? cur + space + ww : ww;
+  }
+  return rows;
+}
+// A single word too long for the whole text area (a URL, say) is cut into pieces that fit.
+function pdBreakLongWord(word, font, width, maxRows) {
+  if (pdWrapRows([word], font, width) <= maxRows) return [word];
+  const out = []; let piece = '';
+  for (const ch of word) {
+    if (piece && pdWrapRows([piece + ch], font, width) > maxRows) { out.push(piece); piece = ch; } else piece += ch;
+  }
+  if (piece) out.push(piece);
+  return out;
+}
+// Split each script line into chunks that fit maxRows rows. Prefers to break after
+// punctuation when that does not waste much of the chunk.
+function pdFitLines(lines, { font, width, maxRows }) {
+  const out = [];
+  const safeW = Math.max(40, width * 0.97); // small margin for font rendering differences
+  for (const line of lines || []) {
+    const words = [].concat(...String(line).split(/\s+/).filter(Boolean).map((w) => pdBreakLongWord(w, font, safeW, maxRows)));
+    if (!words.length) continue;
+    let start = 0;
+    while (start < words.length) {
+      let end = start + 1, lastPunct = -1;
+      while (end < words.length && pdWrapRows(words.slice(start, end + 1), font, safeW) <= maxRows) {
+        if (/[.,;:!?…]$/.test(words[end - 1])) lastPunct = end;
+        end++;
+      }
+      if (end < words.length && lastPunct > start && (lastPunct - start) >= (end - start) * 0.6) end = lastPunct;
+      out.push(words.slice(start, end).join(' '));
+      start = end;
+    }
+  }
+  return out;
+}
+
 function LiveSession({ cfg, onExit, onComplete }) {
-  const lines = cfg.lines;
+  const rootRef = React.useRef(null);
+  // Size of the text area inside the open drop, measured from the real screen.
+  const [box, setBox] = React.useState(() => ({ w: 300, h: 300 }));
+  React.useLayoutEffect(() => {
+    const measure = () => {
+      const el = rootRef.current; if (!el) return;
+      const W = el.clientWidth, H = el.clientHeight;
+      const dropPx = Math.min(H * 0.64, 520);
+      const w = Math.min(W - 12 - 52, 420), h = dropPx - 74 - 14; // 74 = status row, 14 = breathing room above the progress bar
+      setBox((b) => (Math.abs(b.w - w) < 1 && Math.abs(b.h - h) < 1 ? b : { w, h }));
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    let fontsDone = false;
+    try { document.fonts && document.fonts.ready.then(() => { if (!fontsDone) setFontTick((n) => n + 1); }); } catch (e) {}
+    return () => { fontsDone = true; window.removeEventListener('resize', measure); };
+  }, []);
+  const [fontTick, setFontTick] = React.useState(0);
+  const layout = React.useMemo(() => pdPromptLayout({ font: cfg.font, boxW: box.w, boxH: box.h, follow: cfg.follow }), [cfg.font, cfg.follow, box.w, box.h]);
+  const lines = React.useMemo(() => pdFitLines(cfg.lines, { font: cfg.font, width: layout.width, maxRows: layout.maxRows }), [cfg.lines, cfg.font, layout.width, layout.maxRows, fontTick]);
   const [phase, setPhase] = React.useState('countdown');
   const [count, setCount] = React.useState(3);
   const [idx, setIdx] = React.useState(0);
@@ -151,7 +249,8 @@ function LiveSession({ cfg, onExit, onComplete }) {
   React.useEffect(() => {
     if (phase !== 'prompting' || cfg.follow) return;
     const words = (lines[idx] || '').split(/\s+/).length;
-    const ms = Math.max(1500, (words / cfg.speed) * 60 * 1000);
+    // Short chunks made by splitting a long line keep the chosen pace; one second is the floor.
+    const ms = Math.max(1000, (words / cfg.speed) * 60 * 1000);
     const t = setTimeout(() => setIdx(i => { if (i + 1 >= lines.length) { setPhase('complete'); return i; } return i + 1; }), ms);
     return () => clearTimeout(t);
   }, [phase, idx, cfg.follow, cfg.speed, lines]);
@@ -163,22 +262,25 @@ function LiveSession({ cfg, onExit, onComplete }) {
   const dim = phase === 'prompting' ? 0.5 : 0.2;
   const dropH = phase === 'complete' ? 360 : (phase === 'countdown' ? 320 : 'min(64%, 520px)');
 
-  const Line = ({ i, kind }) => {
-    const t = lines[i]; if (!t) return <div style={{ height: 6 }} />;
+  const renderLine = (i, kind, key) => {
+    const t = lines[i]; if (!t) return <div key={key} style={{ height: 6 }} />;
     const styles = { cur: { fontSize: cfg.font, color: 'var(--tp-current)', fontWeight: 600 }, adj: { fontSize: Math.round(cfg.font * 0.75), color: 'var(--tp-adjacent)', fontWeight: 500 }, far: { fontSize: Math.round(cfg.font * 0.6), color: 'var(--tp-far)', fontWeight: 500 } }[kind];
     const align = cfg.pos === 'Left' ? 'left' : cfg.pos === 'Right' ? 'right' : 'center';
-    return <div data-testid={'live-line-' + kind} style={{ ...styles, opacity: 1, lineHeight: 1.34, letterSpacing: '-0.01em', textAlign: align, transition: 'all .45s ease', padding: '6px 0' }}>{t}</div>;
+    // Neighbouring lines are previews: one row, cut with an ellipsis. Only the line being
+    // read wraps, and pdFitLines has already made sure it fits.
+    const oneRow = kind === 'cur' ? { overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+    return <div key={key} data-testid={'live-line-' + kind} style={{ ...styles, ...oneRow, opacity: 1, lineHeight: PD_LINE_HEIGHT, letterSpacing: '-0.01em', textAlign: align, transition: 'color .3s ease, opacity .3s ease', padding: '6px 0' }}>{t}</div>;
   };
 
   const exit = () => { try { streamRef.current && streamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {} onExit(); };
 
   return (
-    <div data-testid="live-session" data-phase={phase} data-speed={cfg.speed} data-font={cfg.font} style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 30, overflow: 'hidden' }}>
+    <div ref={rootRef} data-testid="live-session" data-phase={phase} data-speed={cfg.speed} data-font={cfg.font} data-chunk={idx} data-chunks={lines.length} style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 30, overflow: 'hidden' }}>
       {camOk
         ? <video ref={videoRef} playsInline muted style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', filter: `brightness(${1 - dim})` }} />
         : <CameraView dim={dim} />}
 
-      <div onClick={advance} style={{ position: 'absolute', top: 0, left: 6, right: 6, height: expanded ? dropH : 84, background: '#000', borderRadius: '0 0 40px 40px', border: '1px solid var(--promptdrop-border)', borderTop: 'none', boxShadow: 'var(--shadow-promptdrop)', transition: 'height .48s cubic-bezier(.22,1,.36,1)', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', zIndex: 31 }}>
+      <div onClick={advance} data-testid="live-drop" style={{ position: 'absolute', top: 0, left: 6, right: 6, height: expanded ? dropH : 84, background: '#000', borderRadius: '0 0 40px 40px', border: '1px solid var(--promptdrop-border)', borderTop: 'none', boxShadow: 'var(--shadow-promptdrop)', transition: 'height .48s cubic-bezier(.22,1,.36,1)', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', zIndex: 31 }}>
         <div style={{ paddingTop: 50, display: 'flex', alignItems: 'center', gap: 8, height: 24 }}>
           {recording && phase !== 'complete' && <span className="pd-rec-dot" />}
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.12em', color: recording ? '#FF8077' : 'var(--text-muted)' }}>
@@ -193,8 +295,8 @@ function LiveSession({ cfg, onExit, onComplete }) {
             </div>
           )}
           {(phase === 'prompting' || phase === 'paused') && (
-            <div style={{ width: '100%', maxWidth: 420 }}>
-              <Line i={idx - 1} kind="far" /><Line i={idx} kind="cur" /><Line i={idx + 1} kind="adj" /><Line i={idx + 2} kind="far" />
+            <div data-testid="live-text" style={{ width: '100%', maxWidth: 420 }}>
+              {layout.showFar && renderLine(idx - 1, 'far', 'prev')}{renderLine(idx, 'cur', 'cur')}{layout.showAdj && renderLine(idx + 1, 'adj', 'next')}{layout.showFar && renderLine(idx + 2, 'far', 'after')}
               {cfg.follow && phase === 'prompting' && <div style={{ marginTop: 14, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em', color: 'var(--text-muted)' }}>TAP TO ADVANCE</div>}
             </div>
           )}

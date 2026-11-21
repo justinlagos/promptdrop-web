@@ -26,6 +26,7 @@ const ICONS = {
   type: 'M5 7V5h14v2M12 5v14M9 19h6',
   gauge: 'M12 14l4-4M5.5 17a8 8 0 1 1 13 0M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
   redo: 'M20 9H9a5 5 0 0 0 0 10h6M20 9l-3-3M20 9l-3 3',
+  undo: 'M4 9h11a5 5 0 0 1 0 10H9M4 9l3-3M4 9l3 3',
   trash: 'M5 7h14M10 7V5h4v2M6 7l1 13h10l1-13',
   share: 'M12 15V4M12 4L8 8M12 4l4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5',
   shield: 'M12 3l7 2.5V11c0 5-3.5 8-7 9.5C8.5 19 5 16 5 11V5.5L12 3ZM9 12l2 2 4-4',
@@ -213,6 +214,17 @@ function pdLoadPrefs(){
 }
 function pdSavePrefs(p){ try{ localStorage.setItem(PD_PREFS_KEY, JSON.stringify({ ...pdLoadPrefs(), ...p })); return true; }catch(e){ return false; } }
 
+// Edit decisions for a take, kept apart from the video file. They are small, so they can
+// be saved on every change without rewriting a large recording.
+const PD_EDITS_PREFIX = 'pd.edits.';
+const PD_EDITS_VERSION = 1;
+function pdGetEdits(takeId){ try{ const e=JSON.parse(localStorage.getItem(PD_EDITS_PREFIX+takeId)||'null'); return e&&typeof e==='object'&&e.decisions?e:null; }catch(err){ return null; } }
+function pdPutEdits(takeId, decisions, analysis){ try{ localStorage.setItem(PD_EDITS_PREFIX+takeId, JSON.stringify({ v:PD_EDITS_VERSION, takeId, updatedAt:Date.now(), decisions, analysis:analysis||null })); return true; }catch(err){ return false; } }
+function pdDelEdits(takeId){ try{ localStorage.removeItem(PD_EDITS_PREFIX+takeId); }catch(err){} }
+// Takes list, with each take's edit state attached so lists can show "edited".
+async function _takesWithEdits(){ const list=await _idbAll(); return list.map(t=>{ const e=pdGetEdits(t.id); return e?{ ...t, edits:e, edited:true }:{ ...t, edited:!!t.clean }; }); }
+async function _delTakeAndEdits(id){ await _idbDel(id); pdDelEdits(id); }
+
 const PDsvc = {
   sb: _sb, FN: PD_FN, anon: PD_SUPA_ANON, words: pdWords, durFor: pdDurFor, rel: pdRel, clock: pdClock,
   async token(){ if(!_sb) return null; const {data}=await _sb.auth.getSession(); return data?.session?.access_token||null; },
@@ -222,7 +234,8 @@ const PDsvc = {
   async createScript(title,body){ let uid=null; if(_sb){ const {data:s}=await _sb.auth.getSession(); uid=(s&&s.session&&s.session.user&&s.session.user.id)||null; } if(uid){ const {data,error}=await _sb.from('scripts').insert({user_id:uid,title:title||'Untitled',body:body||''}).select().single(); return error?null:data; } const row={id:'local-'+Date.now().toString(36)+Math.random().toString(36).slice(2,8),title:title||'Untitled',body:body||'',updated_at:new Date().toISOString()}; const all=_lsAll(); all.unshift(row); return _lsSave(all)?row:null; },
   async updateScript(id,patch){ if(!id) return; if(_isLocalId(id)){ _lsSave(_lsAll().map(r=>r.id===id?{...r,...patch,updated_at:new Date().toISOString()}:r)); return; } if(!_sb) return; await _sb.from('scripts').update({...patch,updated_at:new Date().toISOString()}).eq('id',id); },
   async deleteScript(id){ if(!id) return; if(_isLocalId(id)){ _lsSave(_lsAll().filter(r=>r.id!==id)); return; } if(!_sb) return; await _sb.from('scripts').delete().eq('id',id); },
-  takes: _idbAll, getTake: _idbGet, putTake: _idbPut, delTake: _idbDel,
+  takes: _takesWithEdits, getTake: _idbGet, putTake: _idbPut, delTake: _delTakeAndEdits,
+  getEdits: pdGetEdits, putEdits: pdPutEdits, delEdits: pdDelEdits,
   async transcribe(blob){ try{ const fd=new FormData(); fd.append('file',blob,'rec.webm'); const r=await fetch(PD_FN+'/transcribe',{method:'POST',headers:{Authorization:'Bearer '+PD_SUPA_ANON,apikey:PD_SUPA_ANON},body:fd}); const d=await r.json().catch(()=>({})); if(r.status===503)return{ok:false,msg:'AI is not switched on yet on the server.'}; if(!r.ok||d.error)return{ok:false,msg:d.message||'Transcription failed'}; return{ok:true,text:d.text||'',segments:d.segments||[],words:d.words||[]}; }catch(e){return{ok:false,msg:String(e.message||e)};} },
   async ask(question,context,mode){ try{ const r=await fetch(PD_FN+'/assistant',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+PD_SUPA_ANON,apikey:PD_SUPA_ANON},body:JSON.stringify({question,context,mode:mode||'task'})}); const d=await r.json().catch(()=>({})); if(r.status===503)return{ok:false,msg:'AI is not switched on yet on the server.'}; if(!r.ok||d.error)return{ok:false,msg:d.message||'Request failed'}; return{ok:true,text:d.answer||d.text||''}; }catch(e){return{ok:false,msg:String(e.message||e)};} },
   async checkout(plan,cycle){ const t=await this.token(); if(!t) return {ok:false,msg:'Sign in first.'}; try{ const r=await fetch(PD_FN+'/stripe-checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t,apikey:PD_SUPA_ANON},body:JSON.stringify({plan,cycle,successUrl:location.origin+'/app',cancelUrl:location.origin+'/app'})}); const d=await r.json().catch(()=>({})); if(d.url){location.href=d.url; return {ok:true};} return {ok:false,msg:d.message||"Payments aren't switched on yet."}; }catch(e){return{ok:false,msg:String(e.message||e)};} },

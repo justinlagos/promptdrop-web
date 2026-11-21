@@ -147,6 +147,12 @@ function CleanPreview({ url, removed, rate, filterCss, active, trimStart, trimEn
 }
 
 // One comparable string for the current edit decisions. Used to tell saved from unsaved.
+// A complete, normalised copy of the edit decisions (missing values become defaults).
+function ctSnapshot(e) {
+  e = e || {};
+  return { preset: e.preset || "Balanced", speed: e.speed || "Normal", trimStart: Number(e.trimStart) || 0, trimEnd: Number(e.trimEnd) || 0,
+    restored: e.restored && typeof e.restored === "object" ? { ...e.restored } : {}, style: { b: 100, c: 100, s: 100, ...(e.style || {}) } };
+}
 function ctEditKey(e) {
   const restored = Object.keys(e.restored || {}).filter((k) => e.restored[k]).sort();
   const st = e.style || {};
@@ -219,7 +225,14 @@ function CleanTakeScreen({ app }) {
   const wide = usePdWide();
   // What was last saved, as a comparable key. Drives the honest Saved / Unsaved status.
   const savedRef = React.useRef(ctEditKey({ preset: "Balanced", speed: "Normal", trimStart: 0, trimEnd: 0, restored: {}, style: { b: 100, c: 100, s: 100 } }));
-  const [savedTick, setSavedTick] = React.useState(0);
+  // Autosave + undo. Edits settle for a moment, then are saved and added to history.
+  const [saveState, setSaveState] = React.useState("idle");   // idle | saving | saved | error
+  const [, setSavedTick] = React.useState(0);
+  const committedRef = React.useRef(ctSnapshot({}));           // last settled edit state
+  const applyingRef = React.useRef(false);                     // true while load/undo/redo is setting state
+  const histRef = React.useRef({ past: [], future: [] });
+  const [histTick, setHistTick] = React.useState(0);
+  const pendingRef = React.useRef(null);                       // flush function for a pending autosave
 
   React.useEffect(() => {
     let live = true;
@@ -229,15 +242,20 @@ function CleanTakeScreen({ app }) {
       setTake(t || null); setLoaded(true);
       if (t && t.blob && t.blob.size > 0) {
         const u = URL.createObjectURL(t.blob); urlRef.current = u; setUrl(u);
-        if (t.clean) {
-          // Reopen with every saved decision, not just the pause preset.
-          const cl = t.clean;
-          setPreset(cl.preset || "Balanced"); setSpeed(cl.speed || "Normal");
-          setTrimStart(Number(cl.trimStart) || 0); setTrimEnd(Number(cl.trimEnd) || 0);
-          setRestored(cl.restored && typeof cl.restored === "object" ? cl.restored : {});
-          setStyle({ b: 100, c: 100, s: 100, ...(cl.style || {}) });
-          savedRef.current = ctEditKey({ preset: cl.preset || "Balanced", speed: cl.speed || "Normal", trimStart: Number(cl.trimStart) || 0, trimEnd: Number(cl.trimEnd) || 0, restored: cl.restored || {}, style: { b: 100, c: 100, s: 100, ...(cl.style || {}) } });
-          setSilences(cl.silences || null); setDuration(cl.duration || (t.durationMs / 1000)); setAnalysing(false);
+        // Saved edit decisions: the edits store first, then the older copy kept on the take.
+        const stored = pd.svc.getEdits(t.id);
+        const cl = stored ? { ...stored.decisions, ...(stored.analysis || {}) } : t.clean;
+        if (cl) {
+          const snap = ctSnapshot(cl);
+          applyingRef.current = true;
+          setPreset(snap.preset); setSpeed(snap.speed); setTrimStart(snap.trimStart); setTrimEnd(snap.trimEnd); setRestored(snap.restored); setStyle(snap.style);
+          committedRef.current = snap; savedRef.current = ctEditKey(snap); setSaveState("saved");
+          if (cl.silences) { setSilences(cl.silences); setDuration(cl.duration || (t.durationMs / 1000)); setAnalysing(false); }
+          else {
+            const res = await ctDetectSilences(t.blob); if (!live) return;
+            if (res) { setSilences(res.silences); setDuration(res.duration || t.durationMs / 1000); } else setDuration(t.durationMs / 1000);
+            setAnalysing(false);
+          }
         }
         else {
           setStep("Finding pauses…");
@@ -271,14 +289,55 @@ function CleanTakeScreen({ app }) {
   const cleanDur = keptSec / rate;
   const filterCss = `brightness(${style.b}%) contrast(${style.c}%) saturate(${style.s}%)`;
 
-  async function save() {
-    if (!take) return;
-    const clean = { preset, speed, trimStart, trimEnd, restored, style, silences, duration: dur, removedPauseCount: pauseDecisions.length, durationBefore: dur, durationAfter: cleanDur, updatedAt: Date.now(), status: "ready" };
-    try { await pd.svc.putTake({ ...take, clean }); } catch (e) { app.toast("Could not save. Storage may be full."); return; }
-    setTake({ ...take, clean });
-    savedRef.current = ctEditKey({ preset, speed, trimStart, trimEnd, restored, style }); setSavedTick((n) => n + 1);
-    app.toast("Clean Take saved");
+  const current = { preset, speed, trimStart, trimEnd, restored, style };
+  const currentKey = ctEditKey(current);
+  function persist(snap) {
+    if (!take) return false;
+    const ok = pd.svc.putEdits(take.id, snap, { silences, duration: dur, removedPauseCount: pauseDecisions.length, durationBefore: dur, durationAfter: cleanDur });
+    if (ok) { savedRef.current = ctEditKey(snap); setSaveState("saved"); } else setSaveState("error");
+    setSavedTick((n) => n + 1); // savedRef is a ref, so ask for a render to refresh the status
+    return ok;
   }
+  // Every change: wait until the user stops adjusting, then save it and add one undo step.
+  React.useEffect(() => {
+    if (!loaded || analysing || !take) return;
+    if (applyingRef.current) { applyingRef.current = false; committedRef.current = ctSnapshot(current); if (currentKey !== savedRef.current) persist(committedRef.current); return; }
+    if (currentKey === ctEditKey(committedRef.current)) return;
+    setSaveState("saving");
+    const snap = ctSnapshot(current);
+    const settle = () => {
+      pendingRef.current = null;
+      histRef.current.past.push(committedRef.current); if (histRef.current.past.length > 100) histRef.current.past.shift();
+      histRef.current.future = []; committedRef.current = snap; setHistTick((n) => n + 1);
+      persist(snap);
+    };
+    const t = setTimeout(settle, 450);
+    pendingRef.current = () => { clearTimeout(t); settle(); };
+    return () => clearTimeout(t);
+  }, [currentKey, loaded, analysing, take]);
+  // Leaving the editor with a change still settling: save it now, do not lose it.
+  React.useEffect(() => () => { if (pendingRef.current) pendingRef.current(); }, []);
+  function applySnap(snap) {
+    applyingRef.current = true;
+    setPreset(snap.preset); setSpeed(snap.speed); setTrimStart(snap.trimStart); setTrimEnd(snap.trimEnd); setRestored(snap.restored); setStyle(snap.style);
+  }
+  function undo() {
+    if (pendingRef.current) pendingRef.current();
+    const h = histRef.current; if (!h.past.length) return;
+    h.future.push(committedRef.current); const snap = h.past.pop(); setHistTick((n) => n + 1);
+    if (ctEditKey(snap) === currentKeyRef.current) { committedRef.current = snap; persist(snap); return; }
+    applySnap(snap);
+  }
+  function redo() {
+    if (pendingRef.current) pendingRef.current();
+    const h = histRef.current; if (!h.future.length) return;
+    h.past.push(committedRef.current); const snap = h.future.pop(); setHistTick((n) => n + 1);
+    if (ctEditKey(snap) === currentKeyRef.current) { committedRef.current = snap; persist(snap); return; }
+    applySnap(snap);
+  }
+  const currentKeyRef = React.useRef(currentKey); currentKeyRef.current = currentKey;
+  const canUndo = histRef.current.past.length > 0 || saveState === "saving";
+  const canRedo = histRef.current.future.length > 0;
   async function del() { if (take) { await pd.svc.delTake(take.id); pd.reload(); } app.back(); }
   async function transcribeTake() {
     if (!take || !take.blob || transcribing) return;
@@ -307,15 +366,18 @@ function CleanTakeScreen({ app }) {
   }
 
   const TABS = ["Review", "Clean", "Captions", "Style", "Export"];
-  const dirty = ctEditKey({ preset, speed, trimStart, trimEnd, restored, style }) !== savedRef.current;
+  const dirty = currentKey !== savedRef.current;
+  const statusText = saveState === "error" ? "Could not save. Storage may be full." : (dirty || saveState === "saving") ? "Saving…" : saveState === "saved" ? "Saved on this device" : "No edits yet";
   const allPauses = React.useMemo(() => ctPauseDecisions(silences, preset), [silences, preset]);
   const toggleRestore = (id) => setRestored((r) => ({ ...r, [id]: !r[id] }));
 
-  // Desktop keyboard: Space plays or pauses, arrows step one second. Ignored while typing.
+  const undoRef = React.useRef(undo); undoRef.current = undo; const redoRef = React.useRef(redo); redoRef.current = redo;
+  // Desktop keyboard: Space plays or pauses, arrows step one second, Ctrl/Cmd+Z undoes.
   React.useEffect(() => {
     if (!wide) return;
     const onKey = (e) => {
       const tag = (e.target && e.target.tagName) || "";
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "z" || e.key === "Z") && tag !== "TEXTAREA") { e.preventDefault(); e.shiftKey ? redoRef.current() : undoRef.current(); return; }
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON" || e.metaKey || e.ctrlKey || e.altKey) return;
       const v = vref.current; if (!v) return;
       if (e.key === " ") { e.preventDefault(); v.paused ? v.play().catch(() => {}) : v.pause(); }
@@ -364,6 +426,7 @@ function CleanTakeScreen({ app }) {
               : (trimStart || trimEnd || rate !== 1)
               ? <>Edits applied · {ctClock(dur)} → {ctClock(cleanDur)}</>
               : <>Clean Take is ready for edits · {ctClock(dur)}</>}
+            {!wide && saveState !== "idle" && <span data-testid="ct-save-status" data-dirty={dirty || saveState === "saving" ? "1" : "0"} data-state={saveState} role="status" style={{ color: saveState === "error" ? "var(--error)" : "var(--text-muted)" }}> · {statusText}</span>}
           </div>
         )}
       </div>
@@ -478,7 +541,9 @@ function CleanTakeScreen({ app }) {
           never sit on top of an editing control. */}
       <div data-testid="ct-actions" style={{ flexShrink: 0, padding: "10px 16px calc(10px + env(safe-area-inset-bottom, 12px))", background: "var(--bg-primary)", borderTop: "1px solid var(--border-subtle)", display: "flex", gap: 10, alignItems: "center" }}>
         <button className="pd-tap" onClick={() => setMoreOpen(true)} aria-label="More actions" style={{ width: 52, height: 52, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 24, lineHeight: 1, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", paddingBottom: 8 }}>...</button>
-        <DSc.Button variant="primary" size="lg" fullWidth onClick={save} iconLeft={<Icon name="check" size={18} color="#fff" />}>Save Clean Take</DSc.Button>
+        <button className="pd-tap" data-testid="ct-undo" onClick={undo} disabled={!canUndo} aria-label="Undo" style={{ width: 52, height: 52, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: canUndo ? 1 : 0.35 }}><Icon name="undo" size={20} color="var(--text-primary)" /></button>
+        <button className="pd-tap" data-testid="ct-redo" onClick={redo} disabled={!canRedo} aria-label="Redo" style={{ width: 52, height: 52, borderRadius: 14, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: canRedo ? 1 : 0.35 }}><Icon name="redo" size={20} color="var(--text-primary)" /></button>
+        <DSc.Button variant="primary" size="lg" fullWidth onClick={() => setTab("Export")} iconLeft={<Icon name="download" size={18} color="#fff" />}>Export</DSc.Button>
       </div>
 
   </>);
@@ -505,8 +570,9 @@ function CleanTakeScreen({ app }) {
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: "0.08em", color: "var(--text-muted)" }}>CLEAN TAKE</div>
           </div>
           <div style={{ flex: 1 }} />
-          <span data-testid="ct-save-status" data-dirty={dirty ? "1" : "0"} style={{ fontSize: 12.5, color: dirty ? "var(--text-secondary)" : "var(--text-muted)" }}>{dirty ? "Unsaved changes" : (take && take.clean ? "Saved on this device" : "No edits yet")}</span>
-          <button className="pd-tap" data-testid="ct-save" onClick={save} disabled={!dirty} style={{ height: 38, padding: "0 16px", borderRadius: 11, border: "1px solid var(--border-default)", background: "var(--surface-elevated)", color: "var(--text-primary)", fontSize: 13.5, fontWeight: 600, cursor: dirty ? "pointer" : "default", opacity: dirty ? 1 : 0.5, fontFamily: "var(--font-sans)" }}>Save</button>
+          <span data-testid="ct-save-status" data-dirty={dirty || saveState === "saving" ? "1" : "0"} data-state={saveState} role="status" style={{ fontSize: 12.5, color: saveState === "error" ? "var(--error)" : "var(--text-muted)" }}>{statusText}</span>
+          <button className="pd-tap" data-testid="ct-undo" onClick={undo} disabled={!canUndo} aria-label="Undo" title="Undo (Ctrl or Cmd + Z)" style={{ ...iconBtn, opacity: canUndo ? 1 : 0.35 }}><Icon name="undo" size={20} color="var(--text-primary)" /></button>
+          <button className="pd-tap" data-testid="ct-redo" onClick={redo} disabled={!canRedo} aria-label="Redo" title="Redo (Shift + Ctrl or Cmd + Z)" style={{ ...iconBtn, opacity: canRedo ? 1 : 0.35 }}><Icon name="redo" size={20} color="var(--text-primary)" /></button>
           <button className="pd-tap" data-testid="ct-export" onClick={() => setTab("Export")} style={{ height: 38, padding: "0 18px", borderRadius: 11, border: "none", background: "var(--accent-primary)", color: "#fff", fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)" }}>Export</button>
           <button className="pd-tap" onClick={() => setMoreOpen(true)} aria-label="More actions" style={iconBtn}><Icon name="more" size={22} color="var(--text-secondary)" /></button>
         </div>

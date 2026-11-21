@@ -72,9 +72,10 @@ for (const vp of DESKTOPS) {
       expect(await tabsRow.evaluate((el) => el.scrollWidth - el.clientWidth), "tool row does not scroll sideways").toBeLessThanOrEqual(1);
       for (const t of await app.locator('[data-testid^="ct-tab-"]').all()) expect(await isHittable(t), "tool tab can be clicked").toBe(true);
 
-      // Save and Export are in the header and reachable.
+      // Export, Undo and Redo are in the header.
       await expect(app.getByTestId("ct-export")).toBeVisible();
-      await expect(app.getByTestId("ct-save")).toBeVisible();
+      await expect(app.getByTestId("ct-undo")).toBeVisible();
+      await expect(app.getByTestId("ct-redo")).toBeVisible();
     });
   });
 }
@@ -106,20 +107,58 @@ test.describe("desktop editing", () => {
     await expect.poll(() => video.evaluate((v) => v.currentTime), { message: "playhead moved" }).toBeGreaterThan(0.1);
   });
 
-  test("status says Unsaved after a change and Saved after saving; Export opens the export tools", async ({ page }) => {
+  test("edits save themselves; Export opens the export tools", async ({ page }) => {
     const app = await openEditor(page);
     const status = app.getByTestId("ct-save-status");
-    await expect(status).toHaveAttribute("data-dirty", "0");
+    await expect(status).toContainText("No edits yet");
     await app.getByTestId("ct-tab-Clean").click();
     await app.getByTestId("ct-panel").getByText("Social pace", { exact: true }).click();
-    await expect(status, "a change is reported as unsaved").toHaveAttribute("data-dirty", "1");
-    await app.getByTestId("ct-save").click();
-    await expect(status, "saving clears the unsaved state").toHaveAttribute("data-dirty", "0");
+    await expect(status, "the change is saved without pressing anything").toHaveAttribute("data-state", "saved");
     await expect(status).toContainText("Saved");
+    await expect(status).toHaveAttribute("data-dirty", "0");
+    await expect(app.getByTestId("ct-save"), "there is no manual Save step any more").toHaveCount(0);
 
     await app.getByTestId("ct-export").click();
     await expect(app.getByTestId("ct-tab-Export")).toHaveAttribute("aria-pressed", "true");
     await expect(app.getByTestId("ct-panel").getByText("Clean Take video")).toBeVisible();
+  });
+
+  test("undo and redo step through edits, by button and by keyboard", async ({ page }) => {
+    const app = await openEditor(page);
+    const undo = app.getByTestId("ct-undo"), redo = app.getByTestId("ct-redo");
+    await expect(undo, "nothing to undo yet").toBeDisabled();
+    await app.getByTestId("ct-tab-Clean").click();
+    const speedLine = app.getByTestId("ct-panel").getByText(/Playing at/);
+    await expect(speedLine).toContainText("1.00x");
+
+    await app.getByTestId("ct-panel").getByText("Slightly faster", { exact: true }).click();
+    await expect(app.getByTestId("ct-save-status")).toHaveAttribute("data-state", "saved");
+    await app.getByTestId("ct-panel").getByText("Social pace", { exact: true }).click();
+    await expect(app.getByTestId("ct-save-status")).toHaveAttribute("data-dirty", "0");
+    await expect(speedLine).toContainText("1.25x");
+
+    await undo.click();
+    await expect(speedLine, "first undo goes back one step").not.toContainText("1.25x");
+    await expect(speedLine).not.toContainText("1.00x");
+    await undo.click();
+    await expect(speedLine, "second undo is back at the start").toContainText("1.00x");
+    await expect(undo).toBeDisabled();
+    await redo.click();
+    await redo.click();
+    await expect(speedLine, "redo brings both edits back").toContainText("1.25x");
+    await expect(redo).toBeDisabled();
+
+    // Keyboard, with focus off the buttons.
+    await app.getByTestId("ct-main").click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press("Control+z");
+    await expect(speedLine, "Ctrl+Z undoes").not.toContainText("1.25x");
+    await page.keyboard.press("Control+Shift+z");
+    await expect(speedLine, "Ctrl+Shift+Z redoes").toContainText("1.25x");
+
+    // What is on screen after undo and redo is what is stored.
+    await expect(app.getByTestId("ct-save-status")).toHaveAttribute("data-dirty", "0");
+    const stored = await app.evaluate(async () => PDsvc.getEdits((await PDsvc.takes())[0].id));
+    expect(stored.decisions.speed).toBe("Social pace");
   });
 
   test("Space plays and pauses the preview", async ({ page }) => {

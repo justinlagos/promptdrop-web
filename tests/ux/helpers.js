@@ -8,7 +8,7 @@ const SCRIPT_BODY = Array.from({ length: 12 }, (_, i) => `Line ${i + 1} of the r
 
 // Runs before the app boots on first load only: skips onboarding and adds one script.
 // Guarded by a flag so reloads keep whatever state the test has built up.
-export async function seedFirstRun(page, extra = {}) {
+export async function seedFirstRun(page, extra = {}, body = SCRIPT_BODY) {
   await page.addInitScript(({ title, body, extra }) => {
     try {
       if (localStorage.getItem("pd.test.seeded")) return;
@@ -17,7 +17,7 @@ export async function seedFirstRun(page, extra = {}) {
       localStorage.setItem("pd.localScripts", JSON.stringify([{ id: "local-regression", title, body, updated_at: new Date().toISOString() }]));
       for (const k of Object.keys(extra)) localStorage.setItem(k, extra[k]);
     } catch (e) {}
-  }, { title: SCRIPT_TITLE, body: SCRIPT_BODY, extra });
+  }, { title: SCRIPT_TITLE, body, extra });
 }
 
 export async function openPhoneApp(page) {
